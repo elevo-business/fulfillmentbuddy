@@ -44,9 +44,24 @@ async function mondayRequest<T>(query: string, variables: Record<string, unknown
     cache: 'no-store',
   });
 
-  const json = await res.json();
-  if (json.errors) {
-    throw new Error(`monday API error: ${JSON.stringify(json.errors)}`);
+  // monday antwortet bei Auth-/Rate-Limit-Fehlern nicht immer mit sauberem
+  // JSON (z.B. Cloudflare-Fehlerseite bei 5xx) — Status + Rohtext zuerst
+  // sichern, damit der geloggte Fehler tatsächlich etwas aussagt, statt
+  // nur "Unexpected token < in JSON" o.ä.
+  const rawText = await res.text();
+  let json: { data?: T; errors?: unknown };
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+    throw new Error(
+      `monday API antwortete mit Status ${res.status} und keinem gültigen JSON: ${rawText.slice(0, 300)}`
+    );
+  }
+
+  if (!res.ok || json.errors) {
+    throw new Error(
+      `monday API error (HTTP ${res.status}): ${JSON.stringify(json.errors ?? json)}`
+    );
   }
   return json.data as T;
 }
