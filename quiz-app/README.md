@@ -1,8 +1,10 @@
 # Fulfillmentbuddy Quiz
 
-Qualifizierungs-Quiz-Funnel für **quiz.fulfillmentbuddy.de**. Separate Next.js-App
-im Unterordner `quiz-app/` des `fulfillmentbuddy`-Repos (Monorepo — der
-Onepager im Repo-Root bleibt davon unberührt und komplett statisch).
+Qualifizierungs-Quiz-Funnel für **fulfillmentbuddy.de/quiz1** (Pfad auf der
+Hauptdomain, keine eigene Subdomain — via Next.js `basePath: '/quiz1'` in
+`next.config.mjs`). Separate Next.js-App im Unterordner `quiz-app/` des
+`fulfillmentbuddy`-Repos (Monorepo — der Onepager im Repo-Root bleibt davon
+unberührt und komplett statisch).
 
 6 Schritte (Segment, Bestellvolumen, aktuelle Situation, größte
 Herausforderung, Dringlichkeit, Kontaktdaten) → Lead wird serverseitig
@@ -55,12 +57,18 @@ npm run dev
 ```
 
 ## Deployment (Coolify)
-Eigene Resource, **nicht** dieselbe wie der Onepager:
+Eigene Resource, **nicht** dieselbe wie der Onepager — beide teilen sich aber
+dieselbe Domain über Pfad-Routing:
 1. Neue Resource → Nixpacks (Node/Next.js wird automatisch erkannt) →
    Repo `elevo-business/fulfillmentbuddy`, **Base Directory: `/quiz-app`**.
 2. Environment-Variablen `MONDAY_API_KEY` und optional `MONDAY_BOARD_ID` setzen.
-3. Domain `quiz.fulfillmentbuddy.de` eintragen, SSL generieren.
-4. GoDaddy-DNS: zusätzlicher A-Record `quiz` → dieselbe Server-IP wie `@`.
+3. Domain als `https://fulfillmentbuddy.de/quiz1` eintragen (Pfad, keine
+   Subdomain — Coolify/Traefik routet dann `/quiz1/*` zu dieser Resource,
+   alles andere weiterhin zur statischen Onepager-Resource). Falls Coolifys
+   Domain-Feld keinen Pfad-Suffix akzeptiert: als Fallback `quiz.fulfillmentbuddy.de`
+   als eigene Subdomain deployen und `basePath` in `next.config.mjs` entfernen.
+4. Kein zusätzlicher DNS-Eintrag nötig, solange Pfad-Routing verwendet wird —
+   `fulfillmentbuddy.de` zeigt bereits auf den Server.
 
 ## Warum keine Prozess-/Vermittler-Sprache im Funnel
 Bewusst so gehalten: Der Funnel fragt und qualifiziert, sagt aber nirgends

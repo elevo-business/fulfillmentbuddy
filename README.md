@@ -13,10 +13,13 @@ laufenden Lead-Funnels/Landingpages.
 ## Struktur
 ```
 index.html            Der Onepager
+impressum.html         Impressum (§5 TMG)
+datenschutz.html        Datenschutzerklärung
 assets/css/style.css   Styles (Brand: Anthrazit/Schwarz + Orange, angelehnt ans Logo)
 assets/fonts/          Self-hosted Fredoka & Nunito (woff2)
 assets/img/logo/           Echtes Maskottchen-Logo (Quelle + optimierte WebP-Derivate)
 assets/img/illustrations/  Quell-SVGs der unDraw-Illustrationen (Referenz, im HTML inline eingebettet)
+quiz-app/              Next.js Quiz-Funnel (separates Deployment unter /quiz1), work in progress
 ```
 
 ## Logo
@@ -70,8 +73,19 @@ oder Security-Header gebraucht werden, kann jederzeit ein schlanker
 `nginx:alpine`-Dockerfile ergänzt werden — für den aktuellen Umfang lohnt
 sich der Wartungsaufwand aber nicht.
 
+## Rechtliches (Impressum / Datenschutz)
+- **Impressum**: von elevo.solutions übernommen (gleiche Rechtsperson —
+  ELEVO Solutions, Einzelunternehmen, Inhaber M. Celik, Ahrstraße 6, 52511
+  Geilenkirchen, USt-ID DE364166667). Kontakt-E-Mail vorerst `hallo@elevo.solutions`
+  (Annahme — bitte korrigieren, falls eine eigene Fulfillmentbuddy-Adresse
+  gewünscht ist).
+- **Datenschutzerklärung**: **bewusst NICHT** 1:1 von elevo.solutions kopiert —
+  Elevos Version enthält Elevo-spezifische Abschnitte (Cloudflare, Kontaktformular→CRM,
+  LinkedIn/E-Mail-Kaltakquise, Google Ads, Meta-Pixel mit echten Tracking-IDs),
+  die auf diesen Onepager nicht zutreffen (kein Formular, kein Tracking, kein
+  Cloudflare). Stattdessen eine schlanke, wahrheitsgemäße Version für genau das,
+  was diese Seite tatsächlich tut. **Muss aktualisiert werden, sobald `/quiz1`
+  live geht** (dort werden echte personenbezogene Daten verarbeitet).
+
 ## Offene Punkte vor Live-Schaltung
-- **Impressum/Datenschutz**: Für eine öffentlich erreichbare `.de`-Domain mit
-  Geschäftsbezug gesetzlich vorgeschrieben (§5 TMG / DSGVO) — hier noch nicht
-  enthalten, da bewusst nicht Teil dieses Auftrags.
 - **Kontaktmöglichkeit**: aktuell keine (Entscheidung vertagt).

@@ -4,7 +4,7 @@ export default function Page() {
   return (
     <main className="page">
       <div className="brand">
-        <img src="/logo/mascot-badge.webp" alt="" width={32} height={32} />
+        <img src="/quiz1/logo/mascot-badge.webp" alt="" width={32} height={32} />
         <span>
           fulfillment<span className="accent-text">buddy</span>
         </span>

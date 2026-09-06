@@ -129,7 +129,7 @@ export default function Quiz() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await fetch('/api/submit', {
+      const res = await fetch('/quiz1/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(answers),

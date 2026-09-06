@@ -3,35 +3,35 @@
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url('/fonts/fredoka-500.woff2') format('woff2');
+  src: url('/quiz1/fonts/fredoka-500.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Fredoka';
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url('/fonts/fredoka-700.woff2') format('woff2');
+  src: url('/quiz1/fonts/fredoka-700.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Nunito';
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('/fonts/nunito-400.woff2') format('woff2');
+  src: url('/quiz1/fonts/nunito-400.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Nunito';
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url('/fonts/nunito-600.woff2') format('woff2');
+  src: url('/quiz1/fonts/nunito-600.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Nunito';
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url('/fonts/nunito-700.woff2') format('woff2');
+  src: url('/quiz1/fonts/nunito-700.woff2') format('woff2');
 }
 
 :root {
