@@ -38,16 +38,23 @@ python3 -m http.server 8000
 ```
 
 ## Deployment (Coolify)
-Single-Stage `Dockerfile` (`nginx:alpine`, kein Build-Step nötig) + `nginx.conf`
-(1 Jahr Cache/immutable für Fonts/CSS/Bilder, `index.html` unversioniert für
-sofortige Live-Updates, Gzip, Basic-Security-Header).
+Kein Dockerfile nötig — reines HTML/CSS ohne Build-Step. In Coolify als
+**Static Site / Nixpacks** deployen (Coolify erkennt "kein package.json,
+kein Build" automatisch und serviert die Dateien direkt, inkl. Gzip/Caching
+über den vorgeschalteten Traefik-Proxy).
 
 1. GoDaddy-DNS für `fulfillmentbuddy.de`: A-Record `@` und `www` auf die
    Server-IP (dieselbe wie `elevo.solutions`), DNS-only (kein Proxy).
-2. In Coolify: neue Resource → Dockerfile-Build aus diesem Repo/Branch,
-   Domains `fulfillmentbuddy.de` + `www.fulfillmentbuddy.de` eintragen,
+2. In Coolify: neue Resource → Build Pack **Static** wählen, Repo/Branch
+   verbinden, Publish-Directory auf `.` (Repo-Root, da `index.html` dort liegt)
+   setzen, Domains `fulfillmentbuddy.de` + `www.fulfillmentbuddy.de` eintragen,
    SSL-Zertifikat generieren lassen.
 3. Deploy.
+
+Falls später mal eigene Cache-Header (z. B. 1 Jahr immutable für Fonts/CSS)
+oder Security-Header gebraucht werden, kann jederzeit ein schlanker
+`nginx:alpine`-Dockerfile ergänzt werden — für den aktuellen Umfang lohnt
+sich der Wartungsaufwand aber nicht.
 
 ## Offene Punkte vor Live-Schaltung
 - **Impressum/Datenschutz**: Für eine öffentlich erreichbare `.de`-Domain mit
