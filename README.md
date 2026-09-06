@@ -15,8 +15,22 @@ laufenden Lead-Funnels/Landingpages.
 index.html            Der Onepager
 assets/css/style.css   Styles (Brand: Anthrazit/Schwarz + Orange, angelehnt ans Logo)
 assets/fonts/          Self-hosted Fredoka & Nunito (woff2)
-assets/img/illustrations/  Quell-SVGs der Illustrationen (Referenz, im HTML inline eingebettet)
+assets/img/logo/           Echtes Maskottchen-Logo (Quelle + optimierte WebP-Derivate)
+assets/img/illustrations/  Quell-SVGs der unDraw-Illustrationen (Referenz, im HTML inline eingebettet)
 ```
+
+## Logo
+`assets/img/logo/mascot-source.png` ist die Original-Datei (Maskottchen +
+Wortmarke, KI-generiert). Daraus zwei optimierte WebP-Derivate erzeugt:
+- `mascot-badge.webp` — enger Gesichts-Crop, 240×240, für Header- und
+  Footer-Icon (13 KB statt 1,2 MB Original)
+- `mascot-hero.webp` — Maskottchen mit Paket, ohne die eingebrannte
+  Wortmarke (die kommt im HTML als echter Text in Fredoka, nicht als
+  Bild-Text), 1000×621, für die Hero-Section (45 KB)
+
+Beide behalten den transparenten Hintergrund des Originals (inkl. weichem
+Glow-Rand), dadurch fügen sie sich auf Weiß (Header/Hero) wie auf Dunkel
+(Footer) sauber ein.
 
 ## Illustrationen
 Flat-Vector-Illustrationen von [unDraw](https://undraw.co) (Paket `undraw-svg`,
@@ -61,5 +75,3 @@ sich der Wartungsaufwand aber nicht.
   Geschäftsbezug gesetzlich vorgeschrieben (§5 TMG / DSGVO) — hier noch nicht
   enthalten, da bewusst nicht Teil dieses Auftrags.
 - **Kontaktmöglichkeit**: aktuell keine (Entscheidung vertagt).
-- Logo aktuell nur als Wortmarke + einfaches "F"-Icon umgesetzt (kein Maskottchen-Artwork
-  eingebunden) — bei Bedarf finales Logo-Artwork als SVG/PNG in `assets/img/` einbinden.
