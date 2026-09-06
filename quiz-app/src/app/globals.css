@@ -228,3 +228,32 @@ button { font-family: inherit; }
   margin: 0 auto 1.25rem;
   font-size: 1.6rem;
 }
+
+.intro-sub {
+  color: var(--text-secondary);
+  font-size: 0.98rem;
+  line-height: 1.6;
+  margin: 0.75rem 0 1.5rem;
+}
+
+.intro-perks {
+  list-style: none;
+  margin: 0 0 1.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.intro-perks li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.btn-start {
+  width: 100%;
+  padding: 1rem 1.6rem;
+  font-size: 1.02rem;
+}

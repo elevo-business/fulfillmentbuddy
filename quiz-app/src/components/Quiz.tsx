@@ -87,6 +87,7 @@ const CHOICE_STEPS: ChoiceStep[] = [
 const TOTAL_STEPS = CHOICE_STEPS.length + 1; // + Kontakt-Schritt
 
 export default function Quiz() {
+  const [started, setStarted] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<Answers>(EMPTY_ANSWERS);
   const [submitting, setSubmitting] = useState(false);
@@ -160,6 +161,30 @@ export default function Quiz() {
             Wir haben deine Angaben zu <strong>{answers.company}</strong> erhalten und
             melden uns in Kürze mit einer passenden Einschätzung für euer Fulfillment.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!started) {
+    return (
+      <div className="quiz-card">
+        <div className="intro">
+          <p className="step-label">Fulfillment-Kurzcheck</p>
+          <h2>Wo steht euer Fulfillment aktuell — und was ist der sinnvolle nächste Schritt?</h2>
+          <p className="intro-sub">
+            6 kurze Fragen zu eurer Situation. Am Ende bekommst du eine ehrliche,
+            auf euer Unternehmen zugeschnittene Einschätzung statt einer
+            Standard-Antwort.
+          </p>
+          <ul className="intro-perks">
+            <li><span aria-hidden="true">⏱️</span> Nur 2 Minuten</li>
+            <li><span aria-hidden="true">🎯</span> Individuelle Einschätzung, keine Massenmail</li>
+            <li><span aria-hidden="true">🔒</span> Kostenlos &amp; unverbindlich</li>
+          </ul>
+          <button className="btn-primary btn-start" onClick={() => setStarted(true)} type="button">
+            Jetzt starten →
+          </button>
         </div>
       </div>
     );
