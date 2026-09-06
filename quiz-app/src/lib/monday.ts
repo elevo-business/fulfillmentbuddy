@@ -29,7 +29,7 @@ function apiKey(): string {
 }
 
 function boardId(): string {
-  return process.env.MONDAY_BOARD_ID || '5103645944';
+  return process.env.MONDAY_BOARD_ID || '5103645238';
 }
 
 async function mondayRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {

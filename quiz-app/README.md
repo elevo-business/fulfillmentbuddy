@@ -61,7 +61,7 @@ Siehe `.env.example`:
 - `MONDAY_API_KEY` — **muss in Coolify gesetzt sein** (Server-seitig, nie im
   Client-Bundle). Personal-/API-Token aus monday.com (Profil → Admin → API).
 - `MONDAY_BOARD_ID` — Ziel-Board, Default ist bereits richtig gesetzt
-  (`5103645944`, Board "Fulfillmentbuddy Leads").
+  (`5103645238`, Board "Fulfillmentbuddy Leads").
 
 ## Monday-Board-Setup (einmalig, manuell)
 Der verbundene monday-Account kann per API keine Spalten anlegen (fehlende
