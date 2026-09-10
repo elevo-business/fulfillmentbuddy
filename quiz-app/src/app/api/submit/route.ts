@@ -12,6 +12,7 @@ const REQUIRED_FIELDS: (keyof QuizAnswers)[] = [
   'name',
   'company',
   'email',
+  'phone',
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

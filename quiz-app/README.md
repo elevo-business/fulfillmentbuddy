@@ -85,6 +85,7 @@ andere einen einfachen Text):
 | Größte Herausforderung | Text oder Status | Steigende Fehlerquote & Retouren, Lagerkapazität am Limit, Saisonale Spitzen (z. B. Black Friday), Lieferzeiten & Kundenerwartung, Intransparente Kosten |
 | Dringlichkeit | Text oder Status | Akut — wir suchen jetzt, In den nächsten 1–3 Monaten, Explorativ wir informieren uns |
 | Lead-Score | Text oder Zahl | — |
+| Shop-Link | Text oder Link | — (optionales Feld im Quiz) |
 | Quelle | Status | funnel, meta-form |
 | Kampagne | Text | — |
 | Meta Event-ID | Text | — |

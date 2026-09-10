@@ -13,6 +13,7 @@ type Answers = {
   company: string;
   email: string;
   phone: string;
+  shopUrl: string;
   website: string; // honeypot
 };
 
@@ -27,6 +28,7 @@ const EMPTY_ANSWERS: Answers = {
   company: '',
   email: '',
   phone: '',
+  shopUrl: '',
   website: '',
 };
 
@@ -122,6 +124,7 @@ export default function Quiz() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email)) {
       errors.email = 'Bitte gültige E-Mail-Adresse angeben.';
     }
+    if (!answers.phone.trim()) errors.phone = 'Bitte Telefonnummer angeben.';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -247,13 +250,27 @@ export default function Quiz() {
           </div>
 
           <div className="field">
-            <label htmlFor="phone">Telefon (optional)</label>
+            <label htmlFor="phone">Telefon</label>
             <input
               id="phone"
               type="tel"
               value={answers.phone}
               onChange={(e) => updateField('phone', e.target.value)}
               autoComplete="tel"
+              required
+            />
+            {formErrors.phone && <p className="error-text">{formErrors.phone}</p>}
+          </div>
+
+          <div className="field">
+            <label htmlFor="shopUrl">Shoplink <span className="optional-label">(optional)</span></label>
+            <input
+              id="shopUrl"
+              type="url"
+              placeholder="https://euer-shop.de"
+              value={answers.shopUrl}
+              onChange={(e) => updateField('shopUrl', e.target.value)}
+              autoComplete="url"
             />
           </div>
 

@@ -12,7 +12,8 @@ export type QuizAnswers = {
   name: string;
   company: string;
   email: string;
-  phone?: string;
+  phone: string;
+  shopUrl?: string;
 };
 
 const VOLUME_POINTS: Record<string, number> = {

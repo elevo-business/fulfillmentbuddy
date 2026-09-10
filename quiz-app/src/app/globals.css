@@ -176,6 +176,7 @@ button { font-family: inherit; }
   margin-bottom: 1.1rem;
 }
 .field label { font-weight: 600; font-size: 0.9rem; }
+.optional-label { color: var(--text-muted); font-weight: 400; }
 .field input {
   padding: 0.75rem 0.9rem;
   border-radius: var(--radius-sm);

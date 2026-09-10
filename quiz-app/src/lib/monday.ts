@@ -133,6 +133,9 @@ async function buildColumnValues(
   set('Größte Herausforderung', answers.challenge);
   set('Dringlichkeit', answers.urgency);
   set('Lead-Score', String(score));
+  if (answers.shopUrl) {
+    set('Shop-Link', answers.shopUrl);
+  }
 
   return values;
 }
@@ -144,7 +147,8 @@ function formatUpdateBody(answers: QuizAnswers, score: number): string {
     `Firma: ${answers.company}`,
     `Ansprechpartner: ${answers.name}`,
     `E-Mail: ${answers.email}`,
-    `Telefon: ${answers.phone || '—'}`,
+    `Telefon: ${answers.phone}`,
+    `Shoplink: ${answers.shopUrl || '—'}`,
     ``,
     `Segment: ${answers.segment}`,
     `Bestellvolumen/Monat: ${answers.volume}`,
