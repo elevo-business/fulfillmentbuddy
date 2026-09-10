@@ -233,9 +233,10 @@ export default function Quiz() {
 
     return (
       <div className="quiz-card">
-        <p className="step-label">Eure Einordnung</p>
+        <p className="step-label">Anfrage ist raus</p>
         <h2 className="result-head">
-          {firstName ? `${firstName}, ` : ''}so lesen wir eure Angaben:
+          Danke{firstName ? `, ${firstName}` : ''}. Hier schon mal, wie wir eure
+          Angaben lesen:
         </h2>
 
         <div className="result-block">
@@ -256,9 +257,10 @@ export default function Quiz() {
 
         <div className="result-followup">
           <p>
-            <strong>Das ist die grobe Einordnung aus fünf Antworten.</strong> Für
-            eine Einschätzung, die auf eure tatsächlichen Zahlen eingeht, schauen
-            wir uns {answers.company} genauer an. {a.followUp}
+            <strong>Wie es jetzt weitergeht:</strong> Wir gleichen die Angaben zu{' '}
+            {answers.company} mit Fulfillment-Anbietern ab, die zu eurem Volumen,
+            eurer Warenart und eurem Zeitrahmen passen. Passt es, meldet sich der
+            Anbieter direkt bei euch. {a.followUp}
           </p>
         </div>
       </div>
@@ -269,18 +271,20 @@ export default function Quiz() {
     return (
       <div className="quiz-card">
         <div className="intro">
-          <p className="step-label">Fulfillment-Kurzcheck</p>
-          <h2>Wo steht euer Fulfillment aktuell — und was ist der sinnvolle nächste Schritt?</h2>
+          <p className="step-label">Fulfillment-Partner finden</p>
+          <h2>Welcher Fulfillment-Anbieter passt zu eurem Volumen?</h2>
           <p className="intro-sub">
-            {CHOICE_STEPS.length} kurze Fragen zu eurer Situation.
+            {CHOICE_STEPS.length} Fragen zu eurem Setup. Auf dieser Basis gleichen wir
+            eure Anforderungen mit Fulfillment-Anbietern ab — passt es, meldet sich
+            der Anbieter direkt bei euch.
           </p>
           <ul className="intro-perks">
-            <li><span aria-hidden="true">⏱️</span> Nur 2 Minuten</li>
-            <li><span aria-hidden="true">🎯</span> Individuelle Einschätzung, keine Massenmail</li>
-            <li><span aria-hidden="true">🔒</span> Kostenlos &amp; unverbindlich</li>
+            <li><span aria-hidden="true">⏱️</span> 2 Minuten statt wochenlanger Anbieter-Recherche</li>
+            <li><span aria-hidden="true">🎯</span> Vorauswahl nach Volumen, Warenart und Zeitrahmen</li>
+            <li><span aria-hidden="true">🔒</span> Unverbindlich — ihr entscheidet, mit wem ihr sprecht</li>
           </ul>
           <button className="btn-primary btn-start" onClick={() => setStarted(true)} type="button">
-            Jetzt starten →
+            Passende Anbieter finden →
           </button>
         </div>
       </div>
@@ -306,7 +310,7 @@ export default function Quiz() {
       {isContactStep && (
         <div>
           <p className="step-label">Schritt {TOTAL_STEPS} von {TOTAL_STEPS}</p>
-          <h2>Wohin dürfen wir uns melden?</h2>
+          <h2>Wohin soll sich der passende Anbieter melden?</h2>
 
           <div className="field">
             <label htmlFor="name">Name</label>
@@ -411,6 +415,12 @@ export default function Quiz() {
 
           {submitError && <p className="error-text">{submitError}</p>}
 
+          <p className="privacy-note">
+            Mit dem Absenden willigt ihr ein, dass wir eure Angaben an passende
+            Fulfillment-Anbieter weitergeben, damit diese euch kontaktieren können.
+            Details in der <a href="/datenschutz" target="_blank" rel="noopener noreferrer">Datenschutzerklärung</a>.
+          </p>
+
           <div className="nav-row">
             <button className="btn-ghost" onClick={goBack} type="button">
               Zurück
@@ -422,7 +432,7 @@ export default function Quiz() {
               title={!phoneVerified ? 'Bitte zuerst Telefonnummer per SMS bestätigen.' : undefined}
               type="button"
             >
-              {submitting ? 'Wird gesendet …' : 'Absenden'}
+              {submitting ? 'Wird gesendet …' : 'Anfrage abschicken'}
             </button>
           </div>
         </div>

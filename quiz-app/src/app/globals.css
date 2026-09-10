@@ -185,6 +185,14 @@ button { font-family: inherit; }
 .otp-resend { color: var(--text-muted); font-size: 0.82rem; }
 .otp-success { color: #1f8a4c; font-weight: 600; font-size: 0.88rem; margin: 0.5rem 0 0; }
 
+.privacy-note {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0 0 0.2rem;
+}
+.privacy-note a { color: var(--text-muted); text-decoration: underline; }
+
 .honeypot { position: absolute; left: -9999px; opacity: 0; height: 0; overflow: hidden; }
 
 .nav-row {
