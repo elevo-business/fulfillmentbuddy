@@ -46,10 +46,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('twilio verify send failed', err);
-    // TEMP DEBUG — nur mit korrektem Header, danach wieder entfernen.
-    if (req.headers.get('x-debug-key') === 'elevo-temp-diag-9f2') {
-      return NextResponse.json({ error: 'debug', detail: err instanceof Error ? err.message : String(err) }, { status: 502 });
-    }
     return NextResponse.json(
       { error: 'Code konnte nicht gesendet werden. Prüf die Nummer oder versuch es gleich nochmal.' },
       { status: 502 }
