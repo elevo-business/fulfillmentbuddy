@@ -126,7 +126,6 @@ async function buildColumnValues(
     if (phoneCol) values[phoneCol.id] = { phone: digitsOnly(answers.phone), countryShortName: 'DE' };
   }
   set('Unternehmen', answers.company);
-  set('Segment', answers.segment);
   set('Bestellvolumen/Monat', answers.volume);
   set('Lagerbedarf (Paletten/Monat)', answers.storage);
   set('Aktuelle Situation', answers.situation);
@@ -154,7 +153,6 @@ function formatUpdateBody(answers: QuizAnswers, score: number): string {
     `Telefon: ${answers.phone}${answers.phoneVerified ? ' (SMS-verifiziert)' : ''}`,
     `Shoplink: ${answers.shopUrl || '—'}`,
     ``,
-    `Segment: ${answers.segment}`,
     `Bestellvolumen/Monat: ${answers.volume}`,
     `Lagerbedarf (Paletten/Monat): ${answers.storage}`,
     `Aktuelle Situation: ${answers.situation}`,

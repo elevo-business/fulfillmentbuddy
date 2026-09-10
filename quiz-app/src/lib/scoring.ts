@@ -3,7 +3,6 @@
 // wird dem Nutzer selbst nicht angezeigt (kein "Score-Reveal" im Funnel).
 
 export type QuizAnswers = {
-  segment: string;
   volume: string;
   storage: string;
   situation: string;
@@ -46,20 +45,12 @@ const URGENCY_POINTS: Record<string, number> = {
   'Explorativ, wir informieren uns': 5,
 };
 
-const SEGMENT_POINTS: Record<string, number> = {
-  'E-Commerce & Online-Handel': 10,
-  'Marke mit Lagerbedarf': 8,
-  'Multichannel-Anbieter': 10,
-  Sonstiges: 5,
-};
-
 export function scoreLead(answers: QuizAnswers): number {
   const points =
     (VOLUME_POINTS[answers.volume] ?? 0) +
     (STORAGE_POINTS[answers.storage] ?? 0) +
     (SITUATION_POINTS[answers.situation] ?? 0) +
-    (URGENCY_POINTS[answers.urgency] ?? 0) +
-    (SEGMENT_POINTS[answers.segment] ?? 0);
+    (URGENCY_POINTS[answers.urgency] ?? 0);
   return Math.min(100, points);
 }
 

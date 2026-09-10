@@ -9,9 +9,6 @@ export default function Page() {
           fulfillment<span className="accent-text">buddy</span>
         </span>
       </div>
-      <p className="quiz-teaser">
-        In 2 Minuten weißt du, worauf es bei eurem Fulfillment als Nächstes wirklich ankommt.
-      </p>
       <Quiz />
     </main>
   );

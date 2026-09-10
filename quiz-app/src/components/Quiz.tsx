@@ -3,7 +3,6 @@
 import { useState } from 'react';
 
 type Answers = {
-  segment: string;
   volume: string;
   storage: string;
   situation: string;
@@ -18,7 +17,6 @@ type Answers = {
 };
 
 const EMPTY_ANSWERS: Answers = {
-  segment: '',
   volume: '',
   storage: '',
   situation: '',
@@ -33,22 +31,12 @@ const EMPTY_ANSWERS: Answers = {
 };
 
 type ChoiceStep = {
-  key: 'segment' | 'volume' | 'storage' | 'situation' | 'challenge' | 'urgency';
+  key: 'volume' | 'storage' | 'situation' | 'challenge' | 'urgency';
   question: string;
   options: string[];
 };
 
 const CHOICE_STEPS: ChoiceStep[] = [
-  {
-    key: 'segment',
-    question: 'Was beschreibt euer Unternehmen am besten?',
-    options: [
-      'E-Commerce & Online-Handel',
-      'Marke mit Lagerbedarf',
-      'Multichannel-Anbieter',
-      'Sonstiges',
-    ],
-  },
   {
     key: 'volume',
     question: 'Wie viele Sendungen verschickt ihr aktuell pro Monat?',
@@ -250,9 +238,7 @@ export default function Quiz() {
           <p className="step-label">Fulfillment-Kurzcheck</p>
           <h2>Wo steht euer Fulfillment aktuell — und was ist der sinnvolle nächste Schritt?</h2>
           <p className="intro-sub">
-            {CHOICE_STEPS.length} kurze Fragen zu eurer Situation. Am Ende bekommst du eine ehrliche,
-            auf euer Unternehmen zugeschnittene Einschätzung statt einer
-            Standard-Antwort.
+            {CHOICE_STEPS.length} kurze Fragen zu eurer Situation.
           </p>
           <ul className="intro-perks">
             <li><span aria-hidden="true">⏱️</span> Nur 2 Minuten</li>

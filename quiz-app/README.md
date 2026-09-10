@@ -95,7 +95,6 @@ andere einen einfachen Text):
 | E-Mail | E-Mail | — |
 | Telefon | Telefon | — |
 | Unternehmen | Text | — |
-| Segment | Text oder Status | E-Commerce & Online-Handel, Marke mit Lagerbedarf, Multichannel-Anbieter, Sonstiges |
 | Bestellvolumen/Monat | Text oder Status | Unter 500, 500–1.000, 1.000–2.000, 2.000+ |
 | Lagerbedarf (Paletten/Monat) | Text oder Status | 0–10, 10–20, 30–50, 50+, Nicht sicher |
 | Aktuelle Situation | Text oder Status | Inhouse / selbst, Dienstleister vorhanden aber unzufrieden, Noch kein Fulfillment-Partner, Wachstum übersteigt aktuelle Kapazität |
