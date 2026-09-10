@@ -205,6 +205,11 @@ export default function Quiz() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Unbekannter Fehler');
       }
+      // Meta Lead-Event erst NACH erfolgreichem Absenden feuern — sonst
+      // zählt jeder Versuch, nicht nur die tatsächlich eingegangene Anfrage.
+      if (typeof window !== 'undefined' && typeof (window as any).fbq === 'function') {
+        (window as any).fbq('track', 'Lead');
+      }
       setDone(true);
     } catch (err) {
       setSubmitError(
