@@ -65,11 +65,19 @@ Siehe `.env.example`:
 - `MONDAY_BOARD_ID` — Ziel-Board, Default ist bereits richtig gesetzt
   (`5103645238`, Board "Fulfillmentbuddy Leads").
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID` —
-  **müssen in Coolify gesetzt sein**, sonst schlägt SMS-Verifizierung mit
-  502 fehl (Quiz funktioniert trotzdem weiter, Verifizierung ist bewusst
-  kein Pflichtschritt fürs Absenden — siehe Kommentar in `Quiz.tsx`).
-  Account SID + Auth Token: twilio.com/console. Verify Service SID: Twilio
-  Console → Verify → Services → Service anlegen/auswählen (Format „VAxxx…").
+  **müssen in Coolify gesetzt sein**. Telefon-Verifizierung ist **Pflicht
+  fürs Absenden** (validateContact() in `Quiz.tsx`, Submit-Button ist bis
+  dahin deaktiviert) — fehlen die Keys oder schlägt Twilio fehl, kann
+  **niemand mehr das Quiz abschicken**. Account SID + Auth Token:
+  twilio.com/console. Verify Service SID: Twilio Console → Verify →
+  Services → Service anlegen/auswählen (Format „VAxxx…").
+  **Trial-Falle:** Ein neuer Twilio-Account darf im Trial-Modus nur an
+  manuell unter „Verified Caller IDs" hinterlegte Nummern senden — echte
+  Ad-Leads mit fremden Nummern schlagen sonst mit
+  `To send messages ... you must have an approved Primary Compliance
+  Profile` fehl. Für den Live-Betrieb: Twilio Console → Account →
+  **Compliance Profile** einreichen und genehmigen lassen (bzw. Account
+  voll upgraden), sonst bleibt der Funnel für echten Traffic blockiert.
   Kosten: ca. 0,05–0,06 €/SMS in Deutschland.
 
 ## Monday-Board-Setup (einmalig, manuell)

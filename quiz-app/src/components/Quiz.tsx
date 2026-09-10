@@ -98,12 +98,9 @@ export default function Quiz() {
   const [done, setDone] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Telefon-Verifizierung per SMS-OTP (Twilio Verify). Bewusst NICHT
-  // Pflicht fürs Absenden — ein blockierender Verifizierungsschritt kostet
-  // Completion-Rate. Das Ergebnis wird trotzdem mit übermittelt und landet
-  // in monday als eigenes Flag, damit unverifizierte Leads sichtbar sind.
-  // Soll es Pflicht werden: unten in handleSubmit() vor validateContact()
-  // `if (!phoneVerified) { setSubmitError('Bitte Telefonnummer bestätigen.'); return; }` ergänzen.
+  // Telefon-Verifizierung per SMS-OTP (Twilio Verify). PFLICHT fürs
+  // Absenden (validateContact() prüft phoneVerified) — der Submit-Button
+  // ist zusätzlich deaktiviert, solange nicht verifiziert wurde.
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
@@ -196,7 +193,11 @@ export default function Quiz() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email)) {
       errors.email = 'Bitte gültige E-Mail-Adresse angeben.';
     }
-    if (!answers.phone.trim()) errors.phone = 'Bitte Telefonnummer angeben.';
+    if (!answers.phone.trim()) {
+      errors.phone = 'Bitte Telefonnummer angeben.';
+    } else if (!phoneVerified) {
+      errors.phone = 'Bitte Telefonnummer erst per SMS-Code bestätigen.';
+    }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -397,7 +398,8 @@ export default function Quiz() {
             <button
               className="btn-primary"
               onClick={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || !phoneVerified}
+              title={!phoneVerified ? 'Bitte zuerst Telefonnummer per SMS bestätigen.' : undefined}
               type="button"
             >
               {submitting ? 'Wird gesendet …' : 'Absenden'}
