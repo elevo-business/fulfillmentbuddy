@@ -16,10 +16,10 @@ export type QuizAnswers = {
 };
 
 const VOLUME_POINTS: Record<string, number> = {
-  'Unter 100': 5,
-  '100–500': 15,
-  '500–2.000': 25,
-  'Über 2.000': 35,
+  'Unter 500': 5,
+  '500–1.000': 15,
+  '1.000–2.000': 25,
+  '2.000+': 35,
 };
 
 // Lagerbedarf in Paletten/Monat — höherer Bedarf = größerer, wertvollerer Lead.

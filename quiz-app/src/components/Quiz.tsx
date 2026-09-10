@@ -50,7 +50,7 @@ const CHOICE_STEPS: ChoiceStep[] = [
   {
     key: 'volume',
     question: 'Wie viele Sendungen verschickt ihr aktuell pro Monat?',
-    options: ['Unter 100', '100–500', '500–2.000', 'Über 2.000'],
+    options: ['Unter 500', '500–1.000', '1.000–2.000', '2.000+'],
   },
   {
     key: 'storage',
