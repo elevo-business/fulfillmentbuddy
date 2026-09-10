@@ -136,6 +136,10 @@ async function buildColumnValues(
   if (answers.shopUrl) {
     set('Shop-Link', answers.shopUrl);
   }
+  if (typeof answers.phoneVerified === 'boolean') {
+    const verifiedCol = findColumn(columns, 'Telefon verifiziert');
+    if (verifiedCol) values[verifiedCol.id] = { checked: answers.phoneVerified ? 'true' : 'false' };
+  }
 
   return values;
 }
@@ -147,7 +151,7 @@ function formatUpdateBody(answers: QuizAnswers, score: number): string {
     `Firma: ${answers.company}`,
     `Ansprechpartner: ${answers.name}`,
     `E-Mail: ${answers.email}`,
-    `Telefon: ${answers.phone}`,
+    `Telefon: ${answers.phone}${answers.phoneVerified ? ' (SMS-verifiziert)' : ''}`,
     `Shoplink: ${answers.shopUrl || '—'}`,
     ``,
     `Segment: ${answers.segment}`,

@@ -14,6 +14,8 @@ gescheitert: eine reine Static-Site-Resource kann keinen Node-Server für
 | `/datenschutz` | Datenschutzerklärung | Statisches HTML aus `public/datenschutz.html` |
 | `/quiz1` | Qualifizierungs-Quiz (6 Schritte) | Echte React-Route (`src/app/quiz1/page.tsx`) |
 | `/api/submit` | Server-Route, nimmt Quiz-Antworten entgegen | `src/app/api/submit/route.ts`, ruft monday-API |
+| `/api/verify/send` | Startet SMS-OTP-Verifizierung fürs Telefonfeld | `src/app/api/verify/send/route.ts`, ruft Twilio Verify |
+| `/api/verify/check` | Prüft eingegebenen SMS-Code | `src/app/api/verify/check/route.ts`, ruft Twilio Verify |
 
 Die drei HTML-Seiten sind bewusst **kein** React/JSX — sie sind 1:1 der
 ursprüngliche statische Onepager, nur aus `public/` ausgeliefert via
@@ -62,6 +64,13 @@ Siehe `.env.example`:
   Client-Bundle). Personal-/API-Token aus monday.com (Profil → Admin → API).
 - `MONDAY_BOARD_ID` — Ziel-Board, Default ist bereits richtig gesetzt
   (`5103645238`, Board "Fulfillmentbuddy Leads").
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID` —
+  **müssen in Coolify gesetzt sein**, sonst schlägt SMS-Verifizierung mit
+  502 fehl (Quiz funktioniert trotzdem weiter, Verifizierung ist bewusst
+  kein Pflichtschritt fürs Absenden — siehe Kommentar in `Quiz.tsx`).
+  Account SID + Auth Token: twilio.com/console. Verify Service SID: Twilio
+  Console → Verify → Services → Service anlegen/auswählen (Format „VAxxx…").
+  Kosten: ca. 0,05–0,06 €/SMS in Deutschland.
 
 ## Monday-Board-Setup (einmalig, manuell)
 Der verbundene monday-Account kann per API keine Spalten anlegen (fehlende
@@ -86,6 +95,7 @@ andere einen einfachen Text):
 | Dringlichkeit | Text oder Status | Akut — wir suchen jetzt, In den nächsten 1–3 Monaten, Explorativ wir informieren uns |
 | Lead-Score | Text oder Zahl | — |
 | Shop-Link | Text oder Link | — (optionales Feld im Quiz) |
+| Telefon verifiziert | Haken | — (true/false, per SMS-OTP über Twilio Verify) |
 | Quelle | Status | funnel, meta-form |
 | Kampagne | Text | — |
 | Meta Event-ID | Text | — |

@@ -14,6 +14,7 @@ export type QuizAnswers = {
   email: string;
   phone: string;
   shopUrl?: string;
+  phoneVerified?: boolean;
 };
 
 const VOLUME_POINTS: Record<string, number> = {
