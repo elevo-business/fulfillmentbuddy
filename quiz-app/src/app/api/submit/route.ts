@@ -5,6 +5,7 @@ import type { QuizAnswers } from '@/lib/scoring';
 const REQUIRED_FIELDS: (keyof QuizAnswers)[] = [
   'segment',
   'volume',
+  'storage',
   'situation',
   'challenge',
   'urgency',

@@ -5,6 +5,7 @@
 export type QuizAnswers = {
   segment: string;
   volume: string;
+  storage: string;
   situation: string;
   challenge: string;
   urgency: string;
@@ -19,6 +20,15 @@ const VOLUME_POINTS: Record<string, number> = {
   '100–500': 15,
   '500–2.000': 25,
   'Über 2.000': 35,
+};
+
+// Lagerbedarf in Paletten/Monat — höherer Bedarf = größerer, wertvollerer Lead.
+const STORAGE_POINTS: Record<string, number> = {
+  '0–10': 5,
+  '10–20': 15,
+  '30–50': 25,
+  '50+': 35,
+  'Nicht sicher': 10,
 };
 
 const SITUATION_POINTS: Record<string, number> = {
@@ -44,6 +54,7 @@ const SEGMENT_POINTS: Record<string, number> = {
 export function scoreLead(answers: QuizAnswers): number {
   const points =
     (VOLUME_POINTS[answers.volume] ?? 0) +
+    (STORAGE_POINTS[answers.storage] ?? 0) +
     (SITUATION_POINTS[answers.situation] ?? 0) +
     (URGENCY_POINTS[answers.urgency] ?? 0) +
     (SEGMENT_POINTS[answers.segment] ?? 0);

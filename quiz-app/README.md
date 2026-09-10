@@ -65,29 +65,36 @@ Siehe `.env.example`:
 
 ## Monday-Board-Setup (einmalig, manuell)
 Der verbundene monday-Account kann per API keine Spalten anlegen (fehlende
-Berechtigung). Das Board `Fulfillmentbuddy Leads` existiert bereits, hat aber
-nur die Standard-Spalte "Name". Damit die strukturierten Daten ankommen,
-bitte **im monday-UI** folgende Spalten mit exakt diesen Titeln anlegen:
+Berechtigung, 403). Board: `Leads` (Workspace „CRM", `elevo-bunch.monday.com`,
+Board-ID `5103645238`). Spalten bitte **im monday-UI** mit exakt diesen
+Titeln anlegen — der Typ ist bewusst frei wählbar, der Code erkennt den
+tatsächlichen Spaltentyp zur Laufzeit (`valueForColumn()` in `monday.ts`) und
+formatiert den Wert passend (Status-Spalten bekommen `{ label }`, alles
+andere einen einfachen Text):
 
-| Spaltentitel | Typ | Labels |
+| Spaltentitel | Empfohlener Typ | Werte |
 |---|---|---|
-| Status | Status | Neuer Lead, Kontaktiert, Qualifiziert, Nicht qualifiziert, Kunde geworden |
+| Status | Status | Neuer Lead, Kontaktiert, Qualifiziert, Nicht qualifiziert, Kunde geworden — **kritisch:** löst die CAPI-Automation aus, die beim Label „Qualifiziert" ein Event an Meta sendet. Nicht löschen. |
 | E-Mail | E-Mail | — |
 | Telefon | Telefon | — |
 | Unternehmen | Text | — |
-| Segment | Status | E-Commerce & Online-Handel, Marke mit Lagerbedarf, Multichannel-Anbieter, Sonstiges |
-| Bestellvolumen/Monat | Status | Unter 100, 100–500, 500–2.000, Über 2.000 |
-| Aktuelle Situation | Status | Inhouse / selbst, Dienstleister vorhanden aber unzufrieden, Noch kein Fulfillment-Partner, Wachstum übersteigt aktuelle Kapazität |
-| Größte Herausforderung | Status | Steigende Fehlerquote & Retouren, Lagerkapazität am Limit, Saisonale Spitzen (z. B. Black Friday), Lieferzeiten & Kundenerwartung, Intransparente Kosten |
-| Dringlichkeit | Status | Akut — wir suchen jetzt, In den nächsten 1–3 Monaten, Explorativ wir informieren uns |
-| Lead-Score | Zahl | — |
+| Segment | Text oder Status | E-Commerce & Online-Handel, Marke mit Lagerbedarf, Multichannel-Anbieter, Sonstiges |
+| Bestellvolumen/Monat | Text oder Status | Unter 100, 100–500, 500–2.000, Über 2.000 |
+| Lagerbedarf (Paletten/Monat) | Text oder Status | 0–10, 10–20, 30–50, 50+, Nicht sicher |
+| Aktuelle Situation | Text oder Status | Inhouse / selbst, Dienstleister vorhanden aber unzufrieden, Noch kein Fulfillment-Partner, Wachstum übersteigt aktuelle Kapazität |
+| Größte Herausforderung | Text oder Status | Steigende Fehlerquote & Retouren, Lagerkapazität am Limit, Saisonale Spitzen (z. B. Black Friday), Lieferzeiten & Kundenerwartung, Intransparente Kosten |
+| Dringlichkeit | Text oder Status | Akut — wir suchen jetzt, In den nächsten 1–3 Monaten, Explorativ wir informieren uns |
+| Lead-Score | Text oder Zahl | — |
+| Quelle | Status | funnel, meta-form |
+| Kampagne | Text | — |
+| Meta Event-ID | Text | — |
+| Ersetzt | Haken | — |
 
 **Wichtig:** Die App funktioniert auch **ohne** diese Spalten — sie postet in
 jedem Fall alle Antworten als vollständigen Kommentar am neuen Lead-Item, es
-geht nichts verloren. Die Spalten sind "nice to have" für Filterung/Sortierung
-im CRM und werden automatisch befüllt, sobald sie mit exakt passendem Titel
-existieren (kein Code-Change nötig — die App fragt die Board-Struktur zur
-Laufzeit ab und überspringt fehlende Spalten stillschweigend).
+geht nichts verloren. Fehlende Spalten werden beim Schreiben stillschweigend
+übersprungen (kein Code-Change nötig — die App fragt die Board-Struktur zur
+Laufzeit ab).
 
 ## Lokal entwickeln
 ```bash

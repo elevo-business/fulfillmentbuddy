@@ -96,6 +96,16 @@ function digitsOnly(value: string): string {
   return value.replace(/[^\d+]/g, '');
 }
 
+// Formatiert einen rohen String passend zum TATSÄCHLICHEN Spaltentyp auf dem
+// Board — Status-Spalten erwarten { label }, alles andere (Text, Long-Text, …)
+// einen einfachen String. Board-Betreiber legen die Spalten manuell im
+// monday-UI an (siehe Kommentar oben) und wählen dabei frei den Typ; Code darf
+// hier nicht annehmen, welcher Typ es ist.
+function valueForColumn(col: BoardColumn, raw: string): unknown {
+  if (col.type === 'status') return { label: raw };
+  return raw;
+}
+
 async function buildColumnValues(
   answers: QuizAnswers,
   score: number
@@ -103,22 +113,25 @@ async function buildColumnValues(
   const columns = await getBoardColumns();
   const values: Record<string, unknown> = {};
 
-  const set = (title: string, value: unknown) => {
+  const set = (title: string, raw: string) => {
     const col = findColumn(columns, title);
-    if (col) values[col.id] = value;
+    if (col) values[col.id] = valueForColumn(col, raw);
   };
 
-  set('Status', { label: statusForScore(score) });
-  set('E-Mail', { email: answers.email, text: answers.email });
+  set('Status', statusForScore(score));
+  const emailCol = findColumn(columns, 'E-Mail');
+  if (emailCol) values[emailCol.id] = { email: answers.email, text: answers.email };
   if (answers.phone) {
-    set('Telefon', { phone: digitsOnly(answers.phone), countryShortName: 'DE' });
+    const phoneCol = findColumn(columns, 'Telefon');
+    if (phoneCol) values[phoneCol.id] = { phone: digitsOnly(answers.phone), countryShortName: 'DE' };
   }
   set('Unternehmen', answers.company);
-  set('Segment', { label: answers.segment });
-  set('Bestellvolumen/Monat', { label: answers.volume });
-  set('Aktuelle Situation', { label: answers.situation });
-  set('Größte Herausforderung', { label: answers.challenge });
-  set('Dringlichkeit', { label: answers.urgency });
+  set('Segment', answers.segment);
+  set('Bestellvolumen/Monat', answers.volume);
+  set('Lagerbedarf (Paletten/Monat)', answers.storage);
+  set('Aktuelle Situation', answers.situation);
+  set('Größte Herausforderung', answers.challenge);
+  set('Dringlichkeit', answers.urgency);
   set('Lead-Score', String(score));
 
   return values;
@@ -135,6 +148,7 @@ function formatUpdateBody(answers: QuizAnswers, score: number): string {
     ``,
     `Segment: ${answers.segment}`,
     `Bestellvolumen/Monat: ${answers.volume}`,
+    `Lagerbedarf (Paletten/Monat): ${answers.storage}`,
     `Aktuelle Situation: ${answers.situation}`,
     `Größte Herausforderung: ${answers.challenge}`,
     `Dringlichkeit: ${answers.urgency}`,

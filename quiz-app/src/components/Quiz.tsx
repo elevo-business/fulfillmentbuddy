@@ -5,6 +5,7 @@ import { useState } from 'react';
 type Answers = {
   segment: string;
   volume: string;
+  storage: string;
   situation: string;
   challenge: string;
   urgency: string;
@@ -18,6 +19,7 @@ type Answers = {
 const EMPTY_ANSWERS: Answers = {
   segment: '',
   volume: '',
+  storage: '',
   situation: '',
   challenge: '',
   urgency: '',
@@ -29,8 +31,7 @@ const EMPTY_ANSWERS: Answers = {
 };
 
 type ChoiceStep = {
-  key: 'segment' | 'volume' | 'situation' | 'challenge' | 'urgency';
-  label: string;
+  key: 'segment' | 'volume' | 'storage' | 'situation' | 'challenge' | 'urgency';
   question: string;
   options: string[];
 };
@@ -38,7 +39,6 @@ type ChoiceStep = {
 const CHOICE_STEPS: ChoiceStep[] = [
   {
     key: 'segment',
-    label: 'Schritt 1 von 6',
     question: 'Was beschreibt euer Unternehmen am besten?',
     options: [
       'E-Commerce & Online-Handel',
@@ -49,13 +49,16 @@ const CHOICE_STEPS: ChoiceStep[] = [
   },
   {
     key: 'volume',
-    label: 'Schritt 2 von 6',
     question: 'Wie viele Sendungen verschickt ihr aktuell pro Monat?',
     options: ['Unter 100', '100–500', '500–2.000', 'Über 2.000'],
   },
   {
+    key: 'storage',
+    question: 'Wie hoch ist euer durchschnittlicher Lagerbedarf in Paletten pro Monat?',
+    options: ['0–10', '10–20', '30–50', '50+', 'Nicht sicher'],
+  },
+  {
     key: 'situation',
-    label: 'Schritt 3 von 6',
     question: 'Wie läuft euer Fulfillment aktuell?',
     options: [
       'Inhouse / selbst',
@@ -66,7 +69,6 @@ const CHOICE_STEPS: ChoiceStep[] = [
   },
   {
     key: 'challenge',
-    label: 'Schritt 4 von 6',
     question: 'Was ist aktuell eure größte Herausforderung?',
     options: [
       'Steigende Fehlerquote & Retouren',
@@ -78,7 +80,6 @@ const CHOICE_STEPS: ChoiceStep[] = [
   },
   {
     key: 'urgency',
-    label: 'Schritt 5 von 6',
     question: 'Wie dringend sucht ihr eine Lösung?',
     options: ['Akut — wir suchen jetzt', 'In den nächsten 1–3 Monaten', 'Explorativ, wir informieren uns'],
   },
@@ -173,7 +174,7 @@ export default function Quiz() {
           <p className="step-label">Fulfillment-Kurzcheck</p>
           <h2>Wo steht euer Fulfillment aktuell — und was ist der sinnvolle nächste Schritt?</h2>
           <p className="intro-sub">
-            6 kurze Fragen zu eurer Situation. Am Ende bekommst du eine ehrliche,
+            {CHOICE_STEPS.length} kurze Fragen zu eurer Situation. Am Ende bekommst du eine ehrliche,
             auf euer Unternehmen zugeschnittene Einschätzung statt einer
             Standard-Antwort.
           </p>
@@ -199,6 +200,7 @@ export default function Quiz() {
       {!isContactStep && (
         <ChoiceStepView
           step={CHOICE_STEPS[stepIndex]}
+          stepIndex={stepIndex}
           selected={answers[CHOICE_STEPS[stepIndex].key]}
           onSelect={(value) => selectChoice(CHOICE_STEPS[stepIndex].key, value)}
           onBack={stepIndex > 0 ? goBack : undefined}
@@ -207,7 +209,7 @@ export default function Quiz() {
 
       {isContactStep && (
         <div>
-          <p className="step-label">Schritt 6 von 6</p>
+          <p className="step-label">Schritt {TOTAL_STEPS} von {TOTAL_STEPS}</p>
           <h2>Wohin dürfen wir uns melden?</h2>
 
           <div className="field">
@@ -290,18 +292,20 @@ export default function Quiz() {
 
 function ChoiceStepView({
   step,
+  stepIndex,
   selected,
   onSelect,
   onBack,
 }: {
   step: ChoiceStep;
+  stepIndex: number;
   selected: string;
   onSelect: (value: string) => void;
   onBack?: () => void;
 }) {
   return (
     <div>
-      <p className="step-label">{step.label}</p>
+      <p className="step-label">Schritt {stepIndex + 1} von {TOTAL_STEPS}</p>
       <h2>{step.question}</h2>
       <div className="options">
         {step.options.map((opt) => (
