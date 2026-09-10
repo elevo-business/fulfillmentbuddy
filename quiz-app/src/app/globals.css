@@ -88,20 +88,6 @@ button { font-family: inherit; }
   padding: 2.5rem 1.25rem 4rem;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 1rem;
-}
-.brand img { width: 32px; height: 32px; }
-.brand span {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 1.2rem;
-  color: var(--ink);
-}
-
 .quiz-card {
   width: 100%;
   max-width: 560px;
