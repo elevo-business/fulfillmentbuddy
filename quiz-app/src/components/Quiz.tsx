@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { buildAssessment } from '@/lib/assessment';
 
 type Answers = {
   volume: string;
@@ -217,14 +218,47 @@ export default function Quiz() {
   }
 
   if (done) {
+    const a = buildAssessment({
+      volume: answers.volume,
+      storage: answers.storage,
+      situation: answers.situation,
+      challenge: answers.challenge,
+      urgency: answers.urgency,
+      name: answers.name,
+      company: answers.company,
+      email: answers.email,
+      phone: answers.phone,
+    });
+    const firstName = answers.name.trim().split(' ')[0];
+
     return (
       <div className="quiz-card">
-        <div className="result">
-          <div className="result-icon" aria-hidden="true">✓</div>
-          <h2>Danke, {answers.name.split(' ')[0] || ''}!</h2>
+        <p className="step-label">Eure Einordnung</p>
+        <h2 className="result-head">
+          {firstName ? `${firstName}, ` : ''}so lesen wir eure Angaben:
+        </h2>
+
+        <div className="result-block">
+          <h3>Größenordnung</h3>
+          <p>{a.scale}</p>
+          {a.storage && <p>{a.storage}</p>}
+        </div>
+
+        <div className="result-block">
+          <h3>Eure Ausgangslage</h3>
+          <p>{a.situation}</p>
+        </div>
+
+        <div className="result-block result-block--accent">
+          <h3>Der nächste konkrete Schritt</h3>
+          <p>{a.nextStep}</p>
+        </div>
+
+        <div className="result-followup">
           <p>
-            Wir haben deine Angaben zu <strong>{answers.company}</strong> erhalten und
-            melden uns in Kürze mit einer passenden Einschätzung für euer Fulfillment.
+            <strong>Das ist die grobe Einordnung aus fünf Antworten.</strong> Für
+            eine Einschätzung, die auf eure tatsächlichen Zahlen eingeht, schauen
+            wir uns {answers.company} genauer an. {a.followUp}
           </p>
         </div>
       </div>
