@@ -65,10 +65,11 @@ Siehe `.env.example`:
 - `MONDAY_BOARD_ID` — Ziel-Board, Default ist bereits richtig gesetzt
   (`5103645238`, Board "Fulfillmentbuddy Leads").
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID` —
-  **müssen in Coolify gesetzt sein**. Telefon-Verifizierung ist **Pflicht
-  fürs Absenden** (validateContact() in `Quiz.tsx`, Submit-Button ist bis
-  dahin deaktiviert) — fehlen die Keys oder schlägt Twilio fehl, kann
-  **niemand mehr das Quiz abschicken**. Account SID + Auth Token:
+  nötig, solange der optionale SMS-Bestätigungs-Button im Formular steht.
+  Telefon-Verifizierung ist **aktuell optional**: die Telefonnummer selbst
+  ist Pflichtfeld, die SMS-Bestätigung nicht. Wer bestätigt, landet mit
+  `Telefon verifiziert = true` im CRM. Fehlen die Keys, schlägt nur der
+  Bestätigungs-Button fehl, das Quiz bleibt absendbar. Account SID + Auth Token:
   twilio.com/console. Verify Service SID: Twilio Console → Verify →
   Services → Service anlegen/auswählen (Format „VAxxx…").
   **Trial-Falle:** Ein neuer Twilio-Account darf im Trial-Modus nur an

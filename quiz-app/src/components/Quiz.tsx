@@ -87,9 +87,11 @@ export default function Quiz() {
   const [done, setDone] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Telefon-Verifizierung per SMS-OTP (Twilio Verify). PFLICHT fürs
-  // Absenden (validateContact() prüft phoneVerified) — der Submit-Button
-  // ist zusätzlich deaktiviert, solange nicht verifiziert wurde.
+  // Telefon-Verifizierung per SMS-OTP (Twilio Verify). Aktuell OPTIONAL:
+  // die Pflicht war die wahrscheinlichste Ursache dafür, dass von 266
+  // Ad-Klicks kein einziges Formular abgeschickt wurde. Wer bestätigt,
+  // wird als verifiziert ans CRM übergeben (phoneVerified) und ist damit
+  // im Lead-Scoring unterscheidbar.
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
@@ -184,8 +186,6 @@ export default function Quiz() {
     }
     if (!answers.phone.trim()) {
       errors.phone = 'Bitte Telefonnummer angeben.';
-    } else if (!phoneVerified) {
-      errors.phone = 'Bitte Telefonnummer erst per SMS-Code bestätigen.';
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -369,7 +369,7 @@ export default function Quiz() {
               <div className="otp-row">
                 {!otpSent ? (
                   <button type="button" className="btn-ghost otp-btn" onClick={sendOtp} disabled={otpSending}>
-                    {otpSending ? 'Code wird gesendet …' : 'Nummer per SMS bestätigen'}
+                    {otpSending ? 'Code wird gesendet …' : 'Nummer per SMS bestätigen (optional)'}
                   </button>
                 ) : (
                   <div className="otp-check">
@@ -433,8 +433,7 @@ export default function Quiz() {
             <button
               className="btn-primary"
               onClick={handleSubmit}
-              disabled={submitting || !phoneVerified}
-              title={!phoneVerified ? 'Bitte zuerst Telefonnummer per SMS bestätigen.' : undefined}
+              disabled={submitting}
               type="button"
             >
               {submitting ? 'Wird gesendet …' : 'Anfrage abschicken'}
