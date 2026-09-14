@@ -12,8 +12,9 @@ gescheitert: eine reine Static-Site-Resource kann keinen Node-Server für
 | `/` | Onepager (Hero, Zielgruppen, Anzeichen, Kriterien, Über uns) | Statisches HTML aus `public/index.html`, per Next-Rewrite |
 | `/impressum` | Impressum | Statisches HTML aus `public/impressum.html` |
 | `/datenschutz` | Datenschutzerklärung | Statisches HTML aus `public/datenschutz.html` |
-| `/quiz1` | Paketkosten-Rechner + Qualifizierung (8 Schritte) | Echte React-Route (`src/app/quiz1/page.tsx`) |
-| `/api/submit` | Server-Route, nimmt Quiz-Antworten entgegen | `src/app/api/submit/route.ts`, ruft monday-API |
+| `/quiz1` | Landingpage + Fulfillment-Check (Rolle + 6 Fragen) | Echte React-Route (`src/app/quiz1/page.tsx`) |
+| `/api/submit` | Server-Route, nimmt Quiz-Antworten entgegen | `src/app/api/submit/route.ts`, ruft monday-API, gibt `itemId` zurück |
+| `/api/enrich` | Trägt Rechnerwerte am bestehenden Lead nach | `src/app/api/enrich/route.ts` — **kein** zweites `create_item` |
 | `/api/verify/send` | Startet SMS-OTP-Verifizierung fürs Telefonfeld | `src/app/api/verify/send/route.ts`, ruft Twilio Verify |
 | `/api/verify/check` | Prüft eingegebenen SMS-Code | `src/app/api/verify/check/route.ts`, ruft Twilio Verify |
 
@@ -43,9 +44,11 @@ src/
     quiz1/page.tsx        Quiz-Einstiegsseite
     api/submit/route.ts   Server-Route → monday CRM
     layout.tsx, globals.css   Layout & Styles für /quiz1
-  components/Quiz.tsx      Funnel-Logik, 8 Schritte (Client-Component)
+  components/LandingPage.tsx  Landingpage-Sections + A/B-Hero, umschliesst das Quiz
+  components/Quiz.tsx         Check-Logik: Gate, 6 Fragen, Lead, Ergebnis
   lib/
     costCalc.ts            Paketkosten-Rechner (reine Arithmetik, keine Benchmarks)
+    tracking.ts            Funnel-Events fuer den Meta-Pixel
     assessment.ts          Ergebnistexte für den Prospect
     scoring.ts             Lead-Scoring (0–100, additiv) + harte Ausschlussgründe
     monday.ts               monday-API-Anbindung (robust, siehe unten)
@@ -99,14 +102,16 @@ andere einen einfachen Text):
 | Telefon | Telefon | — |
 | Unternehmen | Text | — |
 | Rolle | Text oder Status | Inhaber / Geschäftsführung, Betrieb / Logistik, Andere |
-| Bestellvolumen/Monat | Text oder Status | Unter 500, 500–1.000, 1.000–2.000, 2.000+ (wird aus der Paketzahl des Rechners abgeleitet, nicht mehr abgefragt) |
+| Bestellvolumen/Monat | Text oder Status | 0–100, 100–500, 500–1.000, 1.000–5.000, 5.000+ |
 | Pakete/Monat (Angabe) | Text oder Zahl | — (exakte Zahl aus dem Rechner) |
 | Ist-Kosten pro Paket | Text oder Zahl | — (vom Interessenten selbst gerechnet, in EUR) |
 | Personalanteil % | Text oder Zahl | — (Anteil Personal an seinen Abwicklungskosten) |
-| Lagerbedarf (Paletten/Monat) | Text oder Status | 0–10, 10–20, 30–50, 50+, Nicht sicher |
-| Aktuelle Situation | Text oder Status | Inhouse / selbst, Dienstleister vorhanden aber unzufrieden, Noch kein Fulfillment-Partner, Wachstum übersteigt aktuelle Kapazität |
-| Größte Herausforderung | Text oder Status | Steigende Fehlerquote & Retouren, Lagerkapazität am Limit, Saisonale Spitzen (z. B. Black Friday), Lieferzeiten & Kundenerwartung, Intransparente Kosten |
-| Dringlichkeit | Text oder Status | Akut — wir suchen jetzt, In den nächsten 1–3 Monaten, Explorativ wir informieren uns |
+| Aktuelle Situation | Text oder Status | Ich mache es selbst, Eigenes Team, Teilweise ausgelagert, Vollständig ausgelagert |
+| Zeitaufwand/Woche | Text oder Status | Unter 5 Stunden/Woche, 5–15 Stunden, 15–30 Stunden, 30+ Stunden |
+| Größte Herausforderung | Text oder Status | Zu wenig Lagerplatz, Zu viel Personalaufwand, Zu viel Zeitaufwand, Versandkosten, Retouren, Wachstum / Skalierung |
+| Wachstumsziel | Text oder Status | Unter 10 %, 10–30 %, 30–100 %, Mehr als 100 % |
+| Wichtigstes Kriterium | Text oder Status | Zeit sparen, Kosten reduzieren, Skalieren, Weniger operative Arbeit, Professionellere Prozesse |
+| Intent | Text oder Status | high, medium, low |
 | Lead-Score | Text oder Zahl | — |
 | Shop-Link | Text oder Link | — (optionales Feld im Quiz) |
 | Telefon verifiziert | Haken | — (true/false, per SMS-OTP über Twilio Verify) |
@@ -123,40 +128,62 @@ Laufzeit ab).
 
 ## Funnel-Aufbau (`/quiz1`)
 
-Der Funnel beginnt mit einem **Paketkosten-Rechner** als Leadmagnet, nicht mit
-Fragen. Grund: In der ersten Ad-Testrunde kam die Mehrheit der Leads von
-Leuten, die die Anzeige für ein Jobangebot gehalten oder sich versehentlich
-eingetragen hatten. Ein Rechner, der die eigenen Betriebszahlen als Eingabe
-braucht, filtert das von sich aus aus, weil nur jemand mit eigenem Versand
-diese Zahlen kennt.
+Die Route ist eine vollstaendige Direct-Response-Landingpage, kein nacktes
+Quiz mehr: Hero, Selbstqualifizierung, Pain-Section, Check-Erklaerung, der
+Check selbst, Einwandbehandlung, Transparenz-Section, Final-CTA.
 
-Reihenfolge (8 Schritte, `Phase` in `Quiz.tsx`):
+**Reihenfolge im Check** (`Phase` in `Quiz.tsx`):
 
-1. **Rechner** — Pakete/Monat, Stunden/Woche, interner Stundensatz,
-   Verpackung pro Paket, Lagermiete. Logik in `src/lib/costCalc.ts`.
-2. **Ergebnis** — Ist-Kosten pro Paket, Aufschlüsselung, gebundene
-   Vollzeitstellen. Wird **ohne E-Mail-Gate** gezeigt; das Gate würde die
-   unverbindliche Eintragung zurückholen, die das ursprüngliche Problem war.
-3. bis 7. **Auswahlfragen** — Rolle (der direkte Filter), Lagerbedarf,
-   Situation, Herausforderung, Dringlichkeit.
-8. **Kontakt** — Name, Firma, E-Mail, Telefon (Pflicht), Shoplink (optional),
-   SMS-Bestätigung (optional).
+1. **Gate** — Rolle im Unternehmen. Zaehlt bewusst nicht als "Frage",
+   damit die im Ad versprochenen 6 Fragen stimmen. Wer "Andere" waehlt,
+   landet auf einer Hinweisseite statt im Check.
+2. bis 7. **Sechs Fragen** — Volumen, aktueller Prozess, Zeitaufwand,
+   Herausforderung, Wachstum, wichtigstes Kriterium.
+8. **Kontakt** — Vorname, Firma, E-Mail, Telefon (Pflicht), Shoplink
+   (optional), SMS-Bestaetigung (optional).
+9. **Ergebnis** — dynamische Einschaetzung mit Ampel aus `assessment.ts`.
+10. **Optional: Paketkosten-Rechner** — nach dem Ergebnis, nicht davor.
+    Reichert den bestehenden Lead ueber `/api/enrich` an.
 
-Zwei Dinge, die bewusst so sind:
+Drei Dinge, die bewusst so sind:
 
-- **Porto ist nicht Teil der Rechnung.** Versandkosten zum Carrier zahlt der
-  Shop mit und ohne Dienstleister, sie verzerren den Vergleich nur. Gerechnet
-  wird der Abwicklungsaufwand.
-- **Keine Branchen-Benchmarks, nirgends.** Weder `costCalc.ts` noch
-  `assessment.ts` enthalten Vergleichswerte. Wir haben keine belastbaren
-  Marktzahlen und erfinden keine. Die einzigen Konstanten im Rechner sind
-  Umrechnungen (52/12 Wochen pro Monat, 40-Stunden-Woche für die
-  Vollzeitäquivalenz).
+- **Fulfillmentbuddy betreibt kein Lager.** Die Seite sagt das explizit in
+  der Transparenz-Section. Wir vermitteln an Anbieter und werden von denen
+  bezahlt. Copy, die uns als Lagerbetreiber darstellt, waere irrefuehrend
+  (UWG §5) und erzeugt Leads, die einen Anruf von einer Firma bekommen,
+  die sie nicht erwarten.
+- **Keine Testimonials, Logos oder Zahlen**, solange es keine echten gibt.
+  Die Transparenz-Section erklaert stattdessen das Modell.
+- **Keine Branchen-Benchmarks**, weder in `costCalc.ts` noch in
+  `assessment.ts`. Die einzigen Konstanten im Rechner sind Umrechnungen
+  (52/12 Wochen pro Monat, 40-Stunden-Woche fuer die Vollzeitaequivalenz).
 
-`volume` wird nicht mehr abgefragt, sondern in `volumeBracket()` aus der
-Paketzahl abgeleitet. Die Label-Strings dort müssen zeichengleich zu
-`VOLUME_POINTS` in `scoring.ts` und zur monday-Spalte bleiben, sonst fällt
-die Punktevergabe still auf 0.
+### A/B-Test der Hero-Variante
+
+`?v=b` in der Ziel-URL der Anzeige schaltet auf die Growth-Variante
+("Dein Shop soll wachsen. Nicht dein Lager."), Default ist die
+Pain-Variante ("Packst du noch deine Pakete selbst?"). Beide nutzen
+denselben Check, damit nur der Hook variiert.
+
+### Tracking
+
+`src/lib/tracking.ts` feuert ueber den Pixel: `QuizStart`,
+`QuizQuestionAnswered` (mit Frage und Position), `QuizComplete`,
+`CheckCtaClicked`, `CalculatorCompleted` als Custom Events sowie `Lead`
+als Meta-Standardevent nach erfolgreichem Absenden. Damit ist erstmals
+sichtbar, an welchem Schritt Leute abspringen.
+
+### Design
+
+`/quiz1` laeuft auf Schwarz / Weiss / Neon-Gelb (`globals.css`), damit es
+visuell an die Meta-Creatives anschliesst. Der Onepager unter `/` nutzt
+weiterhin `public/assets/css/style.css` mit dem hellen Orange-Layout —
+die beiden Routen sehen also unterschiedlich aus. Das ist Absicht,
+solange die Startseite nicht nachgezogen wird.
+
+Ein Hero-Bild liegt bewusst nicht im Repo. `.lp-hero` ist so gebaut, dass
+es ohne Foto traegt; ein eigenes Creative kann als `background-image`
+ergaenzt werden.
 
 ## Lokal entwickeln
 ```bash

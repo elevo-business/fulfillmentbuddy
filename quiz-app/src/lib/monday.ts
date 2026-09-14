@@ -13,7 +13,7 @@
 //      etwas verloren, auch wenn noch keine einzige Spalte existiert.
 
 import type { QuizAnswers } from './scoring';
-import { scoreLead, statusForLead, leadBlockers } from './scoring';
+import { scoreLead, statusForLead, leadBlockers, intentTier } from './scoring';
 
 const MONDAY_API_URL = 'https://api.monday.com/v2';
 const API_VERSION = '2024-10';
@@ -128,24 +128,15 @@ async function buildColumnValues(
   set('Unternehmen', answers.company);
   set('Rolle', answers.role);
   set('Bestellvolumen/Monat', answers.volume);
-  set('Lagerbedarf (Paletten/Monat)', answers.storage);
-  set('Aktuelle Situation', answers.situation);
+  set('Aktuelle Situation', answers.process);
+  set('Zeitaufwand/Woche', answers.timeSpent);
   set('Größte Herausforderung', answers.challenge);
-  set('Dringlichkeit', answers.urgency);
+  set('Wachstumsziel', answers.growth);
+  set('Wichtigstes Kriterium', answers.priority);
+  set('Intent', intentTier(answers));
   set('Lead-Score', String(score));
   if (answers.shopUrl) {
     set('Shop-Link', answers.shopUrl);
-  }
-  // Ergebnisse des Paketkosten-Rechners — die Ist-Kosten sind das stärkste
-  // Gesprächsargument für den Anbieter, der den Lead bekommt.
-  if (typeof answers.parcelsPerMonth === 'number') {
-    set('Pakete/Monat (Angabe)', String(Math.round(answers.parcelsPerMonth)));
-  }
-  if (typeof answers.costPerParcel === 'number') {
-    set('Ist-Kosten pro Paket', answers.costPerParcel.toFixed(2).replace('.', ','));
-  }
-  if (typeof answers.laborSharePct === 'number') {
-    set('Personalanteil %', String(Math.round(answers.laborSharePct)));
   }
   if (typeof answers.phoneVerified === 'boolean') {
     const verifiedCol = findColumn(columns, 'Telefon verifiziert');
@@ -167,30 +158,75 @@ function formatUpdateBody(answers: QuizAnswers, score: number): string {
     `Shoplink: ${answers.shopUrl || '—'}`,
     ``,
     `Rolle: ${answers.role}`,
-    `Bestellvolumen/Monat: ${answers.volume} (Angabe: ${
-      typeof answers.parcelsPerMonth === 'number' ? Math.round(answers.parcelsPerMonth) : '?'
-    } Pakete)`,
-    `Lagerbedarf (Paletten/Monat): ${answers.storage}`,
-    `Aktuelle Situation: ${answers.situation}`,
+    `Bestellungen/Monat: ${answers.volume}`,
+    `Fulfillment aktuell: ${answers.process}`,
+    `Zeitaufwand/Woche: ${answers.timeSpent}`,
     `Größte Herausforderung: ${answers.challenge}`,
-    `Dringlichkeit: ${answers.urgency}`,
+    `Wachstum (12 Monate): ${answers.growth}`,
+    `Wichtigstes Kriterium: ${answers.priority}`,
+    `Intent: ${intentTier(answers)}`,
     ``,
-    ``,
-    `Selbst gerechnete Ist-Kosten pro Paket: ${
-      typeof answers.costPerParcel === 'number'
-        ? answers.costPerParcel.toFixed(2).replace('.', ',') + ' EUR'
-        : 'keine Angabe'
-    }`,
-    `Davon Personalanteil: ${
-      typeof answers.laborSharePct === 'number' ? Math.round(answers.laborSharePct) + ' %' : '—'
-    }`,
-    `Gebundene Vollzeitstellen: ${
-      typeof answers.fteEquivalent === 'number' ? answers.fteEquivalent.toFixed(1).replace('.', ',') : '—'
-    }`,
     ``,
     `Lead-Score: ${score}/100 (${statusForLead(answers, score)})`,
     blockers.length ? `Ausschlussgründe: ${blockers.join(', ')}` : `Ausschlussgründe: keine`,
   ].join('\n');
+}
+
+/**
+ * Traegt die Werte des optionalen Paketkosten-Rechners an einem BEREITS
+ * angelegten Lead nach. Bewusst kein zweites create_item: der Rechner
+ * laeuft nach dem Absenden, es ist derselbe Lead und kein neuer.
+ */
+export async function enrichLeadWithCosts(
+  itemId: string,
+  costs: {
+    parcelsPerMonth: number;
+    costPerParcel: number;
+    laborSharePct: number;
+    fteEquivalent: number;
+  }
+): Promise<void> {
+  const columns = await getBoardColumns();
+  const values: Record<string, unknown> = {};
+  const set = (title: string, raw: string) => {
+    const col = findColumn(columns, title);
+    if (col) values[col.id] = valueForColumn(col, raw);
+  };
+
+  set('Pakete/Monat (Angabe)', String(Math.round(costs.parcelsPerMonth)));
+  set('Ist-Kosten pro Paket', costs.costPerParcel.toFixed(2).replace('.', ','));
+  set('Personalanteil %', String(Math.round(costs.laborSharePct)));
+
+  if (Object.keys(values).length > 0) {
+    await mondayRequest(
+      `mutation ($boardId: ID!, $itemId: ID!, $columnValues: JSON!) {
+        change_multiple_column_values(
+          board_id: $boardId
+          item_id: $itemId
+          column_values: $columnValues
+          create_labels_if_missing: true
+        ) { id }
+      }`,
+      { boardId: boardId(), itemId, columnValues: JSON.stringify(values) }
+    );
+  }
+
+  await mondayRequest(
+    `mutation ($itemId: ID!, $body: String!) {
+      create_update(item_id: $itemId, body: $body) { id }
+    }`,
+    {
+      itemId,
+      body: [
+        'Paketkosten-Rechner nachtraeglich ausgefuellt',
+        '',
+        `Pakete/Monat: ${Math.round(costs.parcelsPerMonth)}`,
+        `Ist-Kosten pro Paket: ${costs.costPerParcel.toFixed(2).replace('.', ',')} EUR`,
+        `Personalanteil: ${Math.round(costs.laborSharePct)} %`,
+        `Gebundene Vollzeitstellen: ${costs.fteEquivalent.toFixed(1).replace('.', ',')}`,
+      ].join('\n'),
+    }
+  );
 }
 
 export async function submitLeadToMonday(answers: QuizAnswers): Promise<{ itemId: string; score: number }> {

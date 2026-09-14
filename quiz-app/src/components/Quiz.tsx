@@ -2,10 +2,19 @@
 
 import { useState } from 'react';
 import { buildAssessment } from '@/lib/assessment';
+import { track } from '@/lib/tracking';
+import {
+  ROLE_OPTIONS,
+  VOLUME_OPTIONS,
+  PROCESS_OPTIONS,
+  TIME_OPTIONS,
+  CHALLENGE_OPTIONS,
+  GROWTH_OPTIONS,
+  PRIORITY_OPTIONS,
+} from '@/lib/scoring';
 import {
   calculateCosts,
   parseNumber,
-  volumeBracket,
   euro,
   formatHours,
   EMPTY_COST_INPUTS,
@@ -15,10 +24,12 @@ import {
 
 type Answers = {
   role: string;
-  storage: string;
-  situation: string;
+  volume: string;
+  process: string;
+  timeSpent: string;
   challenge: string;
-  urgency: string;
+  growth: string;
+  priority: string;
   name: string;
   company: string;
   email: string;
@@ -29,10 +40,12 @@ type Answers = {
 
 const EMPTY_ANSWERS: Answers = {
   role: '',
-  storage: '',
-  situation: '',
+  volume: '',
+  process: '',
+  timeSpent: '',
   challenge: '',
-  urgency: '',
+  growth: '',
+  priority: '',
   name: '',
   company: '',
   email: '',
@@ -41,56 +54,21 @@ const EMPTY_ANSWERS: Answers = {
   website: '',
 };
 
-type ChoiceStep = {
-  key: 'storage' | 'situation' | 'challenge' | 'urgency';
+type QuestionKey = 'volume' | 'process' | 'timeSpent' | 'challenge' | 'growth' | 'priority';
+
+type Question = {
+  key: QuestionKey;
   question: string;
   options: string[];
 };
 
-// Rollenfrage: eigene Phase ('gate'), nicht Teil von CHOICE_STEPS, mit
-// eigenem State statt dem generischen ChoiceStep-Mechanismus (sie steuert
-// eine Weiche, kein normaler Fragenschritt). Zwei der drei aktuell
-// laufenden Ad-Creatives versprechen allgemeine "Fulfillment
-// auslagern"-Hilfe statt konkret den Rechner — dadurch ist der eingehende
-// Traffic breiter/weniger vorqualifiziert als in der ersten Runde. Die
-// Rollenfrage steht deshalb VOR dem Rechner (statt wie vorher danach):
-// ein Klick filtert Job-Interessenten und Neugierige raus, bevor sie fünf
-// Felder ausfüllen — schont ihre Zeit und hält die Rechner-
-// Completion-Rate als Kennzahl aussagekräftig.
-const ROLE_OPTIONS = ['Inhaber / Geschäftsführung', 'Betrieb / Logistik', 'Andere'];
-
-const CHOICE_STEPS: ChoiceStep[] = [
-  {
-    key: 'storage',
-    question: 'Wie hoch ist euer durchschnittlicher Lagerbedarf in Paletten pro Monat?',
-    options: ['0–10', '10–20', '30–50', '50+', 'Nicht sicher'],
-  },
-  {
-    key: 'situation',
-    question: 'Wie läuft euer Fulfillment aktuell?',
-    options: [
-      'Inhouse / selbst',
-      'Dienstleister vorhanden, aber unzufrieden',
-      'Noch kein Fulfillment-Partner',
-      'Wachstum übersteigt aktuelle Kapazität',
-    ],
-  },
-  {
-    key: 'challenge',
-    question: 'Was ist aktuell eure größte Herausforderung?',
-    options: [
-      'Steigende Fehlerquote & Retouren',
-      'Lagerkapazität am Limit',
-      'Saisonale Spitzen (z. B. Black Friday)',
-      'Lieferzeiten & Kundenerwartung',
-      'Intransparente Kosten',
-    ],
-  },
-  {
-    key: 'urgency',
-    question: 'Wie dringend sucht ihr eine Lösung?',
-    options: ['Akut — wir suchen jetzt', 'In den nächsten 1–3 Monaten', 'Explorativ, wir informieren uns'],
-  },
+const QUESTIONS: Question[] = [
+  { key: 'volume', question: 'Wie viele Bestellungen verschickst du aktuell pro Monat?', options: VOLUME_OPTIONS },
+  { key: 'process', question: 'Wie wird dein Fulfillment aktuell abgewickelt?', options: PROCESS_OPTIONS },
+  { key: 'timeSpent', question: 'Wie viel Zeit verbringt dein Team ungefähr mit Fulfillment?', options: TIME_OPTIONS },
+  { key: 'challenge', question: 'Was ist aktuell deine größte Herausforderung?', options: CHALLENGE_OPTIONS },
+  { key: 'growth', question: 'Wie stark soll dein Shop in den nächsten 12 Monaten wachsen?', options: GROWTH_OPTIONS },
+  { key: 'priority', question: 'Was wäre dir beim Fulfillment am wichtigsten?', options: PRIORITY_OPTIONS },
 ];
 
 type CalcField = {
@@ -133,28 +111,35 @@ const CALC_FIELDS: CalcField[] = [
   },
 ];
 
-// Gate (Rolle), Rechner, Ergebnis, Auswahlfragen, Kontakt
-const TOTAL_STEPS = 3 + CHOICE_STEPS.length + 1;
-
-type Phase = 'intro' | 'gate' | 'notFit' | 'calc' | 'result' | 'choices' | 'contact';
+/**
+ * Der Rollen-Schritt zählt bewusst nicht als "Frage" in der Anzeige — er
+ * ist das Eingangs-Gate, nicht Teil des Checks. Anzeige bleibt dadurch
+ * bei den im Ad versprochenen 6 Fragen.
+ */
+type Phase = 'gate' | 'notFit' | 'questions' | 'contact' | 'result' | 'calc' | 'calcResult';
 
 export default function Quiz() {
-  const [phase, setPhase] = useState<Phase>('intro');
-  const [choiceIndex, setChoiceIndex] = useState(0);
+  const [phase, setPhase] = useState<Phase>('gate');
+  const [qIndex, setQIndex] = useState(0);
   const [answers, setAnswers] = useState<Answers>(EMPTY_ANSWERS);
-  const [calcRaw, setCalcRaw] = useState<Record<keyof CostInputs, string>>({ ...EMPTY_COST_INPUTS });
-  const [cost, setCost] = useState<CostResult | null>(null);
-  const [parcels, setParcels] = useState(0);
+  const [started, setStarted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Telefon-Verifizierung per SMS-OTP (Twilio Verify). Aktuell OPTIONAL:
-  // die Pflicht war die wahrscheinlichste Ursache dafür, dass von 266
-  // Ad-Klicks kein einziges Formular abgeschickt wurde. Wer bestätigt,
-  // wird als verifiziert ans CRM übergeben (phoneVerified) und ist damit
-  // im Lead-Scoring unterscheidbar.
+  // Optionaler Paketkosten-Rechner: nach dem Ergebnis, nicht davor. Er ist
+  // nicht mehr die Haupt-Conversion, aber weiterhin das stärkste
+  // Gesprächsargument für den Anbieter, der den Lead bekommt.
+  const [calcRaw, setCalcRaw] = useState<Record<keyof CostInputs, string>>({ ...EMPTY_COST_INPUTS });
+  const [cost, setCost] = useState<CostResult | null>(null);
+  const [calcSending, setCalcSending] = useState(false);
+  /** monday-Item des bereits angelegten Leads — der Rechner reichert es
+   *  nach, statt einen zweiten Lead anzulegen. */
+  const [itemId, setItemId] = useState<string | null>(null);
+
+  // Telefon-Verifizierung per SMS-OTP (Twilio Verify). Optional: die
+  // Pflicht war die wahrscheinlichste Ursache dafür, dass von 266
+  // Ad-Klicks kein einziges Formular abgeschickt wurde.
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
@@ -162,84 +147,53 @@ export default function Quiz() {
   const [otpChecking, setOtpChecking] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
 
-  const stepNumber =
-    phase === 'gate'
-      ? 1
-      : phase === 'calc'
-        ? 2
-        : phase === 'result'
-          ? 3
-          : phase === 'choices'
-            ? 4 + choiceIndex
-            : TOTAL_STEPS;
-  const progressPct = done ? 100 : Math.round(((stepNumber - 1) / TOTAL_STEPS) * 100);
+  const totalQuestions = QUESTIONS.length;
+  const answeredCount = phase === 'contact' ? totalQuestions : qIndex;
+  const progressPct =
+    phase === 'result' || phase === 'calc' || phase === 'calcResult'
+      ? 100
+      : Math.round((answeredCount / (totalQuestions + 1)) * 100);
+
+  function updateField(field: keyof Answers, value: string) {
+    setAnswers((prev) => ({ ...prev, [field]: value }));
+  }
 
   function selectRole(value: string) {
     updateField('role', value);
-    setTimeout(() => {
-      setPhase(value === 'Andere' ? 'notFit' : 'calc');
-    }, 180);
-  }
-
-  function updateCalc(key: keyof CostInputs, value: string) {
-    setCalcRaw((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function submitCalc() {
-    const errors: Record<string, string> = {};
-    const parsed: Partial<CostInputs> = {};
-
-    for (const f of CALC_FIELDS) {
-      const n = parseNumber(calcRaw[f.key]);
-      if (Number.isNaN(n)) {
-        errors[f.key] = 'Bitte eine Zahl eintragen.';
-      } else if (n < 0) {
-        errors[f.key] = 'Bitte keine negative Zahl.';
-      } else if (n === 0 && !f.allowZero) {
-        errors[f.key] = 'Bitte einen Wert größer als null eintragen.';
-      } else {
-        parsed[f.key] = n;
-      }
+    if (value === 'Andere') {
+      setTimeout(() => setPhase('notFit'), 160);
+      return;
     }
-
-    setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-
-    const inputs = parsed as CostInputs;
-    setParcels(inputs.parcels);
-    setCost(calculateCosts(inputs));
-    setPhase('result');
+    if (!started) {
+      track('QuizStart');
+      setStarted(true);
+    }
+    setTimeout(() => setPhase('questions'), 160);
   }
 
-  function selectChoice(key: ChoiceStep['key'], value: string) {
-    setAnswers((prev) => ({ ...prev, [key]: value }));
+  function selectAnswer(key: QuestionKey, value: string) {
+    updateField(key, value);
+    track('QuizQuestionAnswered', { question: key, position: qIndex + 1 });
     setTimeout(() => {
-      if (choiceIndex + 1 < CHOICE_STEPS.length) {
-        setChoiceIndex((i) => i + 1);
+      if (qIndex + 1 < QUESTIONS.length) {
+        setQIndex((i) => i + 1);
       } else {
+        track('QuizComplete');
         setPhase('contact');
       }
-    }, 180);
+    }, 160);
   }
 
   function goBack() {
     setSubmitError(null);
     setFormErrors({});
     if (phase === 'contact') {
-      setPhase('choices');
-      setChoiceIndex(CHOICE_STEPS.length - 1);
-    } else if (phase === 'choices') {
-      if (choiceIndex > 0) setChoiceIndex((i) => i - 1);
-      else setPhase('result');
-    } else if (phase === 'result') {
-      setPhase('calc');
-    } else if (phase === 'calc') {
-      setPhase('gate');
+      setPhase('questions');
+      setQIndex(QUESTIONS.length - 1);
+    } else if (phase === 'questions') {
+      if (qIndex > 0) setQIndex((i) => i - 1);
+      else setPhase('gate');
     }
-  }
-
-  function updateField(field: keyof Answers, value: string) {
-    setAnswers((prev) => ({ ...prev, [field]: value }));
   }
 
   function updatePhone(value: string) {
@@ -289,11 +243,8 @@ export default function Quiz() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Prüfung fehlgeschlagen.');
-      if (data.verified) {
-        setPhoneVerified(true);
-      } else {
-        setOtpError('Code stimmt nicht. Bitte prüfen und nochmal versuchen.');
-      }
+      if (data.verified) setPhoneVerified(true);
+      else setOtpError('Code stimmt nicht. Bitte prüfen und nochmal versuchen.');
     } catch (err) {
       setOtpError(err instanceof Error ? err.message : 'Prüfung fehlgeschlagen.');
     } finally {
@@ -308,9 +259,7 @@ export default function Quiz() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email)) {
       errors.email = 'Bitte gültige E-Mail-Adresse angeben.';
     }
-    if (!answers.phone.trim()) {
-      errors.phone = 'Bitte Telefonnummer angeben.';
-    }
+    if (!answers.phone.trim()) errors.phone = 'Bitte Telefonnummer angeben.';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -323,28 +272,15 @@ export default function Quiz() {
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...answers,
-          // volume wird aus der Paketzahl des Rechners abgeleitet und nicht
-          // mehr separat abgefragt.
-          volume: volumeBracket(parcels),
-          phoneVerified,
-          parcelsPerMonth: parcels,
-          costPerParcel: cost?.costPerParcel,
-          laborSharePct: cost ? cost.laborShare * 100 : undefined,
-          fteEquivalent: cost?.fteEquivalent,
-        }),
+        body: JSON.stringify({ ...answers, phoneVerified }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Unbekannter Fehler');
-      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Unbekannter Fehler');
+      if (typeof data.itemId === 'string') setItemId(data.itemId);
       // Meta Lead-Event erst NACH erfolgreichem Absenden feuern — sonst
-      // zählt jeder Versuch, nicht nur die tatsächlich eingegangene Anfrage.
-      if (typeof window !== 'undefined' && typeof (window as any).fbq === 'function') {
-        (window as any).fbq('track', 'Lead');
-      }
-      setDone(true);
+      // zählt jeder Versuch, nicht nur die eingegangene Anfrage.
+      track('Lead');
+      setPhase('result');
     } catch (err) {
       setSubmitError(
         err instanceof Error
@@ -356,14 +292,59 @@ export default function Quiz() {
     }
   }
 
-  if (done) {
+  function submitCalc() {
+    const errors: Record<string, string> = {};
+    const parsed: Partial<CostInputs> = {};
+
+    for (const f of CALC_FIELDS) {
+      const n = parseNumber(calcRaw[f.key]);
+      if (Number.isNaN(n)) errors[f.key] = 'Bitte eine Zahl eintragen.';
+      else if (n < 0) errors[f.key] = 'Bitte keine negative Zahl.';
+      else if (n === 0 && !f.allowZero) errors[f.key] = 'Bitte einen Wert größer als null eintragen.';
+      else parsed[f.key] = n;
+    }
+
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    const inputs = parsed as CostInputs;
+    const result = calculateCosts(inputs);
+    setCost(result);
+    setPhase('calcResult');
+
+    // Die Kostenwerte am bereits angelegten Lead nachreichen. Schlägt das
+    // fehl, ist der Lead trotzdem im CRM — deshalb nur still loggen.
+    if (!itemId) return;
+    setCalcSending(true);
+    fetch('/api/enrich', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        itemId,
+        parcelsPerMonth: inputs.parcels,
+        costPerParcel: result.costPerParcel,
+        laborSharePct: result.laborShare * 100,
+        fteEquivalent: result.fteEquivalent,
+      }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        track('CalculatorCompleted');
+      })
+      .catch((err) => console.error('Nachtrag der Rechnerwerte fehlgeschlagen', err))
+      .finally(() => setCalcSending(false));
+  }
+
+  // ---------- Ergebnis (nach dem Lead) ----------
+  if (phase === 'result' || phase === 'calc' || phase === 'calcResult') {
     const a = buildAssessment({
-      volume: volumeBracket(parcels),
       role: answers.role,
-      storage: answers.storage,
-      situation: answers.situation,
+      volume: answers.volume,
+      process: answers.process,
+      timeSpent: answers.timeSpent,
       challenge: answers.challenge,
-      urgency: answers.urgency,
+      growth: answers.growth,
+      priority: answers.priority,
       name: answers.name,
       company: answers.company,
       email: answers.email,
@@ -373,176 +354,89 @@ export default function Quiz() {
 
     return (
       <div className="quiz-card">
-        <p className="step-label">Anfrage ist raus</p>
-        <h2 className="result-head">
-          Danke{firstName ? `, ${firstName}` : ''}. Hier schon mal, wie wir eure
-          Angaben lesen:
-        </h2>
+        <p className="step-label">Deine Einschätzung</p>
+        <h2 className="result-head">{a.headline}</h2>
 
-        {cost && (
-          <div className="result-block">
-            <h3>Eure gerechneten Ist-Kosten</h3>
-            <p>
-              <strong>{euro(cost.costPerParcel)} pro Paket</strong>, davon{' '}
-              {euro(cost.laborPerParcel)} Personal.
-            </p>
+        <div className="result-facts">
+          <div className="result-fact">
+            <span>Bestellungen</span>
+            <b>{answers.volume} / Monat</b>
           </div>
-        )}
+          <div className="result-fact">
+            <span>Fulfillment</span>
+            <b>{answers.process}</b>
+          </div>
+          <div className="result-fact">
+            <span>Zeitaufwand</span>
+            <b>{answers.timeSpent}</b>
+          </div>
+          <div className="result-fact">
+            <span>Wachstumsziel</span>
+            <b>{answers.growth}</b>
+          </div>
+        </div>
 
-        <div className="result-block">
-          <h3>Größenordnung</h3>
-          <p>{a.scale}</p>
-          {a.storage && <p>{a.storage}</p>}
+        <div className={`verdict verdict--${a.signal}`}>
+          <p className="verdict-line">{a.verdict}</p>
+          <p className="verdict-reason">{a.reasoning}</p>
         </div>
 
         <div className="result-block">
-          <h3>Eure Ausgangslage</h3>
-          <p>{a.situation}</p>
-        </div>
-
-        <div className="result-block result-block--accent">
-          <h3>Der nächste konkrete Schritt</h3>
+          <h3>Was du unabhängig von uns prüfen kannst</h3>
           <p>{a.nextStep}</p>
         </div>
 
-        <div className="result-followup">
-          <p>
-            <strong>Wie es jetzt weitergeht:</strong> Wir gleichen die Angaben zu{' '}
-            {answers.company} mit Fulfillment-Anbietern ab, die zu eurem Volumen,
-            eurer Warenart und eurem Zeitrahmen passen. Passt es, meldet sich der
-            Anbieter direkt bei euch. {a.followUp}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === 'intro') {
-    return (
-      <div className="quiz-card">
-        <div className="intro">
-          <p className="step-label">Fulfillment auslagern</p>
-          <h2>Bevor wir euch mit einem Anbieter verbinden: eure Zahlen.</h2>
-          <p className="intro-sub">
-            Fünf Angaben aus eurem Betrieb, dann seht ihr eure Ist-Kosten pro Paket —
-            inklusive der Stunden, die in keiner Kalkulation stehen, weil sie in den
-            Gehältern stecken. Auf dieser Basis gleichen wir euch mit passenden
-            Fulfillment-Anbietern ab.
-          </p>
-          <ul className="intro-perks">
-            <li><span aria-hidden="true">🧮</span> Eure eigenen Zahlen, keine Branchendurchschnitte</li>
-            <li><span aria-hidden="true">👀</span> Ergebnis direkt sichtbar, ohne E-Mail vorher</li>
-            <li><span aria-hidden="true">🔒</span> Unverbindlich, ihr entscheidet, mit wem ihr sprecht</li>
-          </ul>
-          <button className="btn-primary btn-start" onClick={() => setPhase('gate')} type="button">
-            Los geht's →
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === 'notFit') {
-    return (
-      <div className="quiz-card">
-        <div className="intro">
-          <p className="step-label">Kurz gecheckt</p>
-          <h2>Das hier ist für Shop-Betreiber gemacht</h2>
-          <p className="intro-sub">
-            Der Rechner und die Anbieter-Vermittlung richten sich an Inhaber und
-            Betriebsverantwortliche eines Online-Shops mit eigenem Versand. Das
-            scheint bei euch aktuell nicht zu passen — schaut gerne auf{' '}
-            <a href="/">fulfillmentbuddy.de</a> vorbei, falls sich das ändert.
-          </p>
-          <button className="btn-ghost" onClick={() => setPhase('gate')} type="button">
-            Zurück
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="quiz-card">
-      <div className="progress-track">
-        <div className="progress-fill" style={{ width: `${progressPct}%` }} />
-      </div>
-
-      {phase === 'gate' && (
-        <div>
-          <p className="step-label">Schritt 1 von {TOTAL_STEPS}</p>
-          <h2>Welche Rolle hast du im Unternehmen?</h2>
-          <div className="options">
-            {ROLE_OPTIONS.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                className={`option-btn${answers.role === opt ? ' selected' : ''}`}
-                onClick={() => selectRole(opt)}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-          <div className="nav-row">
-            <button className="btn-ghost" onClick={() => setPhase('intro')} type="button">
-              Zurück
+        {phase === 'result' && (
+          <div className="result-block result-block--accent">
+            <h3>Optional: eure Ist-Kosten pro Paket</h3>
+            <p>
+              Fünf Zahlen aus eurem Betrieb, dann seht ihr, was euch die Abwicklung
+              heute wirklich kostet — inklusive der Stunden, die in den Gehältern
+              stecken. Das ist die ehrlichste Vergleichsgrundlage gegen jedes Angebot.
+            </p>
+            <button className="btn-primary" onClick={() => setPhase('calc')} type="button">
+              Paketkosten berechnen →
             </button>
-            <span />
           </div>
-        </div>
-      )}
+        )}
 
-      {phase === 'calc' && (
-        <div>
-          <p className="step-label">Schritt 2 von {TOTAL_STEPS}</p>
-          <h2>Eure Zahlen</h2>
-          <p className="intro-sub">
-            Schätzwerte reichen. Porto lassen wir absichtlich weg, das zahlt ihr mit
-            und ohne Dienstleister.
-          </p>
-
-          {CALC_FIELDS.map((f) => (
-            <div className="field" key={f.key}>
-              <label htmlFor={f.key}>{f.label}</label>
-              {f.hint && <span className="field-hint">{f.hint}</span>}
-              <div className="calc-input">
-                <input
-                  id={f.key}
-                  type="text"
-                  inputMode="decimal"
-                  value={calcRaw[f.key]}
-                  onChange={(e) => updateCalc(f.key, e.target.value)}
-                />
-                <span className="calc-suffix">{f.suffix}</span>
+        {phase === 'calc' && (
+          <div className="result-block result-block--accent">
+            <h3>Eure Ist-Kosten pro Paket</h3>
+            <p className="field-hint">
+              Schätzwerte reichen. Porto lassen wir absichtlich weg, das zahlt ihr mit
+              und ohne Dienstleister.
+            </p>
+            {CALC_FIELDS.map((f) => (
+              <div className="field" key={f.key}>
+                <label htmlFor={f.key}>{f.label}</label>
+                {f.hint && <span className="field-hint">{f.hint}</span>}
+                <div className="calc-input">
+                  <input
+                    id={f.key}
+                    type="text"
+                    inputMode="decimal"
+                    value={calcRaw[f.key]}
+                    onChange={(e) => setCalcRaw((p) => ({ ...p, [f.key]: e.target.value }))}
+                  />
+                  <span className="calc-suffix">{f.suffix}</span>
+                </div>
+                {formErrors[f.key] && <p className="error-text">{formErrors[f.key]}</p>}
               </div>
-              {formErrors[f.key] && <p className="error-text">{formErrors[f.key]}</p>}
-            </div>
-          ))}
-
-          <div className="nav-row">
-            <button className="btn-ghost" onClick={() => setPhase('gate')} type="button">
-              Zurück
-            </button>
+            ))}
             <button className="btn-primary" onClick={submitCalc} type="button">
               Ergebnis anzeigen →
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {phase === 'result' && cost && (
-        <div>
-          <p className="step-label">Schritt 3 von {TOTAL_STEPS}</p>
-          <h2>Euer Ist-Wert</h2>
-
-          <div className="cost-headline">
-            <span className="cost-value">{euro(cost.costPerParcel)}</span>
-            <span className="cost-unit">pro Paket, nur Abwicklung</span>
-          </div>
-
-          <div className="result-block">
-            <h3>Woraus sich das zusammensetzt</h3>
+        {phase === 'calcResult' && cost && (
+          <div className="result-block result-block--accent">
+            <h3>Eure Ist-Kosten pro Paket</h3>
+            <div className="cost-headline">
+              <span className="cost-value">{euro(cost.costPerParcel)}</span>
+              <span className="cost-unit">pro Paket, nur Abwicklung</span>
+            </div>
             <div className="cost-rows">
               <div className="cost-row">
                 <span>Personal</span>
@@ -561,59 +455,120 @@ export default function Quiz() {
                 <b>{euro(cost.totalPerMonth)} / Monat</b>
               </div>
             </div>
-          </div>
-
-          <div className="result-block result-block--accent">
-            <h3>Die Zeile, die meist fehlt</h3>
             <p>
               Der Versand bindet bei euch{' '}
               <strong>{formatHours(cost.hoursPerMonth)} Stunden im Monat</strong>, das
               entspricht {cost.fteEquivalent.toFixed(1).replace('.', ',')} Vollzeitstellen.
-              Personal macht damit{' '}
-              <strong>{Math.round(cost.laborShare * 100)} %</strong> eurer Abwicklungskosten
-              aus, also {euro(cost.laborPerParcel)} pro Paket.
+              Personal macht damit <strong>{Math.round(cost.laborShare * 100)} %</strong> eurer
+              Abwicklungskosten aus, also {euro(cost.laborPerParcel)} pro Paket.
+            </p>
+            <p className="field-hint">
+              Reine Arithmetik auf euren Angaben, kein Branchenvergleich.
+              {calcSending ? ' Wird übermittelt …' : ''}
             </p>
           </div>
+        )}
 
-          <p className="privacy-note">
-            Das ist reine Arithmetik auf euren Angaben, kein Branchenvergleich. Ob ein
-            Dienstleister günstiger ist, hängt an seinem Angebot, nicht an dieser Zahl.
+        <div className="result-followup">
+          <p>
+            <strong>Wie es jetzt weitergeht{firstName ? `, ${firstName}` : ''}:</strong>{' '}
+            Wir gleichen die Angaben zu {answers.company} mit Fulfillment-Anbietern ab,
+            die zu eurem Volumen, eurer Warenart und eurem Zeitrahmen passen. Passt es,
+            meldet sich der Anbieter direkt bei euch. {a.followUp}
           </p>
+        </div>
+      </div>
+    );
+  }
 
-          <div className="nav-row">
-            <button className="btn-ghost" onClick={goBack} type="button">
-              Zahlen ändern
-            </button>
-            <button className="btn-primary" onClick={() => setPhase('choices')} type="button">
-              Passende Anbieter finden →
-            </button>
+  // ---------- Nicht-Zielgruppe ----------
+  if (phase === 'notFit') {
+    return (
+      <div className="quiz-card">
+        <p className="step-label">Kurz gecheckt</p>
+        <h2>Der Check ist für Shop-Betreiber gemacht</h2>
+        <p>
+          Der Fulfillment-Check und die Anbieter-Vermittlung richten sich an Inhaber und
+          Betriebsverantwortliche eines Online-Shops mit eigenem Versand. Das scheint bei
+          dir aktuell nicht zu passen — schau gerne auf <a href="/">fulfillmentbuddy.de</a>{' '}
+          vorbei, falls sich das ändert.
+        </p>
+        <button className="btn-ghost" onClick={() => setPhase('gate')} type="button">
+          Zurück
+        </button>
+      </div>
+    );
+  }
+
+  // ---------- Gate + Fragen + Kontakt ----------
+  return (
+    <div className="quiz-card">
+      <div className="progress-track">
+        <div className="progress-fill" style={{ width: `${progressPct}%` }} />
+      </div>
+
+      {phase === 'gate' && (
+        <div>
+          <p className="step-label">Fulfillment-Check</p>
+          <h2>Welche Rolle hast du im Unternehmen?</h2>
+          <div className="options">
+            {ROLE_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                className={`option-btn${answers.role === opt ? ' selected' : ''}`}
+                onClick={() => selectRole(opt)}
+              >
+                {opt}
+              </button>
+            ))}
           </div>
         </div>
       )}
 
-      {phase === 'choices' && (
-        <ChoiceStepView
-          step={CHOICE_STEPS[choiceIndex]}
-          stepNumber={stepNumber}
-          totalSteps={TOTAL_STEPS}
-          selected={answers[CHOICE_STEPS[choiceIndex].key]}
-          onSelect={(value) => selectChoice(CHOICE_STEPS[choiceIndex].key, value)}
-          onBack={goBack}
-        />
+      {phase === 'questions' && (
+        <div>
+          <p className="step-label">
+            Frage {qIndex + 1} von {totalQuestions}
+          </p>
+          <h2>{QUESTIONS[qIndex].question}</h2>
+          <div className="options">
+            {QUESTIONS[qIndex].options.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                className={`option-btn${answers[QUESTIONS[qIndex].key] === opt ? ' selected' : ''}`}
+                onClick={() => selectAnswer(QUESTIONS[qIndex].key, opt)}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+          <div className="nav-row">
+            <button className="btn-ghost" onClick={goBack} type="button">
+              Zurück
+            </button>
+            <span />
+          </div>
+        </div>
       )}
 
       {phase === 'contact' && (
         <div>
-          <p className="step-label">Schritt {TOTAL_STEPS} von {TOTAL_STEPS}</p>
-          <h2>Wohin soll sich der passende Anbieter melden?</h2>
+          <p className="step-label">Letzter Schritt</p>
+          <h2>Deine Fulfillment-Einschätzung ist bereit.</h2>
+          <p>
+            Wir haben genug Informationen, um einzuschätzen, ob sich ausgelagertes
+            Fulfillment für deinen Shop bereits lohnen könnte.
+          </p>
 
           <div className="field">
-            <label htmlFor="name">Name</label>
+            <label htmlFor="name">Vorname</label>
             <input
               id="name"
               value={answers.name}
               onChange={(e) => updateField('name', e.target.value)}
-              autoComplete="name"
+              autoComplete="given-name"
             />
             {formErrors.name && <p className="error-text">{formErrors.name}</p>}
           </div>
@@ -685,11 +640,13 @@ export default function Quiz() {
           </div>
 
           <div className="field">
-            <label htmlFor="shopUrl">Shoplink <span className="optional-label">(optional)</span></label>
+            <label htmlFor="shopUrl">
+              Shoplink <span className="optional-label">(optional)</span>
+            </label>
             <input
               id="shopUrl"
               type="url"
-              placeholder="https://euer-shop.de"
+              placeholder="https://dein-shop.de"
               value={answers.shopUrl}
               onChange={(e) => updateField('shopUrl', e.target.value)}
               autoComplete="url"
@@ -711,67 +668,26 @@ export default function Quiz() {
           {submitError && <p className="error-text">{submitError}</p>}
 
           <p className="privacy-note">
-            Mit dem Absenden willigt ihr ein, dass wir eure Angaben an passende
-            Fulfillment-Anbieter weitergeben, damit diese euch kontaktieren können.
-            Details in der <a href="/datenschutz" target="_blank" rel="noopener noreferrer">Datenschutzerklärung</a>.
+            Mit dem Absenden willigst du ein, dass wir deine Angaben an passende
+            Fulfillment-Anbieter weitergeben, damit diese dich kontaktieren können.
+            Details in der{' '}
+            <a href="/datenschutz" target="_blank" rel="noopener noreferrer">
+              Datenschutzerklärung
+            </a>
+            .
           </p>
 
           <div className="nav-row">
             <button className="btn-ghost" onClick={goBack} type="button">
               Zurück
             </button>
-            <button
-              className="btn-primary"
-              onClick={handleSubmit}
-              disabled={submitting}
-              type="button"
-            >
-              {submitting ? 'Wird gesendet …' : 'Anfrage abschicken'}
+            <button className="btn-primary" onClick={handleSubmit} disabled={submitting} type="button">
+              {submitting ? 'Wird gesendet …' : 'Meine Einschätzung erhalten →'}
             </button>
           </div>
+          <p className="microcopy">Kostenlos · unverbindlich · kein Spam</p>
         </div>
       )}
-    </div>
-  );
-}
-
-function ChoiceStepView({
-  step,
-  stepNumber,
-  totalSteps,
-  selected,
-  onSelect,
-  onBack,
-}: {
-  step: ChoiceStep;
-  stepNumber: number;
-  totalSteps: number;
-  selected: string;
-  onSelect: (value: string) => void;
-  onBack: () => void;
-}) {
-  return (
-    <div>
-      <p className="step-label">Schritt {stepNumber} von {totalSteps}</p>
-      <h2>{step.question}</h2>
-      <div className="options">
-        {step.options.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            className={`option-btn${selected === opt ? ' selected' : ''}`}
-            onClick={() => onSelect(opt)}
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-      <div className="nav-row">
-        <button className="btn-ghost" onClick={onBack} type="button">
-          Zurück
-        </button>
-        <span />
-      </div>
     </div>
   );
 }

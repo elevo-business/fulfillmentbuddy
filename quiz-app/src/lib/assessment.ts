@@ -1,88 +1,98 @@
-// Ergebnis-Logik für den Kurzcheck.
+// Ergebnis-Logik für den Fulfillment-Check.
 //
-// Wichtig: Das hier ist bewusst KEINE Statistik-Datenbank und kein
-// Benchmark-Vergleich — wir haben keine belastbaren Branchenzahlen und
-// erfinden auch keine. Jeder Textbaustein ist eine strukturelle Einordnung
-// der Angaben, die der Nutzer selbst gemacht hat, plus ein konkreter
-// Prüfschritt, den er auch ohne uns gehen kann.
+// Wichtig: KEINE Statistik-Datenbank, kein Benchmark-Vergleich, keine
+// Einsparversprechen. Wir haben keine belastbaren Branchenzahlen und
+// erfinden auch keine. Jeder Baustein ist eine strukturelle Einordnung
+// der Angaben, die der Nutzer selbst gemacht hat.
 //
-// Abgrenzung zu scoring.ts: Der Lead-Score dort ist intern (CRM-Priorisierung)
-// und wird dem Nutzer NICHT gezeigt. Diese Datei erzeugt ausschließlich das,
-// was der Prospect am Ende zu sehen bekommt.
+// Abgrenzung zu scoring.ts: Der Lead-Score dort ist intern
+// (CRM-Priorisierung) und wird dem Nutzer NICHT gezeigt. Diese Datei
+// erzeugt ausschließlich das, was der Prospect am Ende sieht.
 
 import type { QuizAnswers } from './scoring';
+import { intentTier } from './scoring';
 
 export type Assessment = {
-  /** Einordnung der Größenordnung (aus Sendungsvolumen) */
-  scale: string;
-  /** Zusatz zum Lagerbedarf, falls er die Einordnung verändert */
-  storage: string | null;
-  /** Was die geschilderte Ausgangslage strukturell bedeutet */
-  situation: string;
-  /** Konkreter nächster Prüfschritt zur genannten Herausforderung */
+  /** Überschrift der Ergebnisseite, abgeleitet aus Volumen und Wachstum */
+  headline: string;
+  /** Ampel für die Einschätzung */
+  signal: 'green' | 'amber' | 'neutral';
+  /** Die Einschätzung in einem Satz */
+  verdict: string;
+  /** Warum wir das so einordnen — bezieht sich auf die eigenen Angaben */
+  reasoning: string;
+  /** Was der Prospect auch ohne uns als Nächstes prüfen kann */
   nextStep: string;
-  /** Wann wir uns melden — abgeleitet aus der Dringlichkeit */
+  /** Wie es mit uns weitergeht */
   followUp: string;
 };
 
-const SCALE: Record<string, string> = {
-  'Unter 500':
-    'Unter 500 Sendungen im Monat rechnet sich Auslagern selten automatisch. Die entscheidende Größe ist hier nicht der Stückpreis, sondern wie viele Stunden das Packen bei euch bindet — und was diese Stunden wert sind.',
-  '500–1.000':
-    '500 bis 1.000 Sendungen im Monat ist die Größenordnung, in der Fulfillment zur Rechenaufgabe wird: Ab hier lässt sich externe Abwicklung seriös gegen eure eigenen Kosten rechnen, vorher ist es meist Bauchgefühl.',
-  '1.000–2.000':
-    'Bei 1.000 bis 2.000 Sendungen im Monat ist die Frage nicht mehr ob, sondern wie. Ab dieser Größe hängen Lieferzeit und Fehlerquote an der Prozessqualität — nicht mehr am Einsatz einzelner Leute.',
-  '2.000+':
-    'Über 2.000 Sendungen im Monat schlägt jeder Prozentpunkt Fehlerquote und jeder Tag Lieferzeit unmittelbar auf Umsatz und Retourenquote durch. Auf dem Niveau ist Fulfillment kein Kostenposten mehr, sondern Teil des Produkts.',
+const HEADLINE: Record<string, string> = {
+  high: 'Dein Shop wächst. Dein Fulfillment sollte mithalten.',
+  medium: 'Dein Fulfillment ist an der Grenze zum Auslagern.',
+  low: 'Für dein aktuelles Volumen lohnt sich Auslagern noch nicht zwingend.',
 };
 
-const STORAGE: Record<string, string | null> = {
-  '0–10': null,
-  '10–20': null,
-  '30–50':
-    'Mit 30 bis 50 Paletten im Monat kommt Lagerfläche als zweiter Kostenblock neben der Abwicklung dazu — Angebote sind ab hier nur vergleichbar, wenn Fläche und Handling getrennt ausgewiesen sind.',
-  '50+':
-    'Ab 50 Paletten im Monat ist Lagerfläche ein eigener Verhandlungsgegenstand. Wer nur Stückpreise vergleicht, übersieht auf dem Niveau den größeren Hebel.',
-  'Nicht sicher':
-    'Beim Lagerbedarf lohnt sich vor jedem Gespräch eine grobe Zahl. Sie verändert Angebote oft stärker als die Sendungsmenge — und ohne sie bekommt ihr nur Spannen statt Preisen.',
+const VERDICT: Record<string, string> = {
+  high: 'Ausgelagertes Fulfillment könnte für deinen Shop bereits deutlich sinnvoll sein.',
+  medium: 'Ausgelagertes Fulfillment könnte sich für deinen Shop bald rechnen.',
+  low: 'Ausgelagertes Fulfillment ist bei deiner aktuellen Größenordnung selten der erste Hebel.',
 };
 
-const SITUATION: Record<string, string> = {
-  'Inhouse / selbst':
-    'Ihr macht es selbst. Damit ist euer Engpass nicht der Preis, sondern eure eigene Zeit und Fläche — und beides skaliert nicht mit dem Umsatz mit.',
-  'Dienstleister vorhanden, aber unzufrieden':
-    'Ihr habt einen Dienstleister, aber es passt nicht. Die Vorfrage vor jedem Wechsel: Ist es ein Prozessproblem — dann ist es lösbar — oder ein Kapazitätsproblem? Kapazität lässt sich nicht nachverhandeln.',
-  'Noch kein Fulfillment-Partner':
-    'Ohne bestehenden Partner startet ihr auf einem leeren Blatt. Das ist ein Vorteil: Ihr könnt die Kriterien setzen, statt einen laufenden Vertrag zu reparieren.',
-  'Wachstum übersteigt aktuelle Kapazität':
-    'Wachstum über der eigenen Kapazität ist der teuerste Zustand im Fulfillment. Ihr bezahlt ihn in Lieferzeit, Support-Aufwand und Nerven — nur taucht er auf keiner Rechnung auf.',
-};
+// Begründung aus der Kombination Prozess + Zeitaufwand. Beschreibt nur,
+// was die Angaben bedeuten, ohne eine Ersparnis zu behaupten.
+function buildReasoning(answers: QuizAnswers): string {
+  const inhouse =
+    answers.process === 'Ich mache es selbst' || answers.process === 'Eigenes Team';
+  const viel =
+    answers.timeSpent === '15–30 Stunden' || answers.timeSpent === '30+ Stunden';
 
+  if (inhouse && viel) {
+    return `Ihr wickelt den Versand selbst ab und bindet dafür ${answers.timeSpent.toLowerCase()}. Diese Zeit steckt in Gehältern und taucht pro Paket nie auf. Genau dort entscheidet sich, ob Auslagern für euch rechnet.`;
+  }
+  if (inhouse) {
+    return 'Ihr wickelt den Versand selbst ab. Der Aufwand hält sich aktuell in Grenzen, wächst aber typischerweise nicht linear, sondern sprunghaft mit dem Bestellvolumen.';
+  }
+  if (answers.process === 'Teilweise ausgelagert') {
+    return 'Ein Teil läuft schon extern. Bei geteilten Prozessen liegt der Hebel meist weniger im Stückpreis als in den Schnittstellen zwischen euch und dem Dienstleister.';
+  }
+  return 'Ihr habt bereits vollständig ausgelagert. Dann geht es nicht um das Ob, sondern darum, ob euer aktueller Anbieter noch zu eurem Volumen und euren Zielen passt.';
+}
+
+// Konkreter Prüfschritt zur genannten Herausforderung. Der Prospect kann
+// ihn auch ohne uns gehen — das ist Absicht.
 const NEXT_STEP: Record<string, string> = {
-  'Steigende Fehlerquote & Retouren':
-    'Holt euch die Pick-Fehlerquote der letzten drei Monate in Zahlen — eure eigene oder die eures Dienstleisters. Ohne Zahl lässt sich weder etwas verbessern noch etwas vergleichen. Wer sie nicht liefern kann, misst sie nicht.',
-  'Lagerkapazität am Limit':
-    'Rechnet ab jetzt mit dem Peak-Bedarf, nicht mit dem Durchschnitt. Fulfillment-Verträge scheitern im November, nicht im Juni — und die Kapazität dafür wird im Sommer verhandelt.',
-  'Saisonale Spitzen (z. B. Black Friday)':
-    'Fragt Peak-Kapazität konkret in Stück pro Tag ab — und ab wann sie angemeldet sein muss. „Machen wir schon" ist keine Zusage, eine Zahl im Vertrag schon.',
-  'Lieferzeiten & Kundenerwartung':
-    'Setzt an der Cut-off-Zeit an, nicht am Preis. Eine Stunde späterer Cut-off kann einen kompletten Liefertag sparen — und wirkt beim Kunden stärker als jeder Cent Ersparnis pro Paket.',
-  'Intransparente Kosten':
-    'Verlangt eine Beispielrechnung für einen echten Monat aus eurer Historie statt einer Preisliste pro Position. Erst an einem realen Monat zeigen sich Lagergebühren, Mindermengen und Retourenkosten.',
+  'Zu wenig Lagerplatz':
+    'Rechnet mit eurem Peak-Bedarf, nicht mit dem Durchschnitt. Fulfillment-Verträge scheitern im November, nicht im Juni, und die Kapazität dafür wird im Sommer verhandelt.',
+  'Zu viel Personalaufwand':
+    'Rechnet einmal aus, wie viele Vollzeitstellen der Versand bei euch bindet. Die Zahl überrascht die meisten Gründer und ist die ehrlichste Vergleichsgrundlage gegen jedes Angebot.',
+  'Zu viel Zeitaufwand':
+    'Haltet eine Woche lang fest, wie viele Stunden tatsächlich in Packen, Labeln und Retouren fließen. Geschätzte Zeit ist fast immer zu niedrig geschätzt.',
+  Versandkosten:
+    'Trennt beim Vergleich Porto von Abwicklung. Porto zahlt ihr mit und ohne Dienstleister, vergleichbar ist nur der Handling-Anteil.',
+  Retouren:
+    'Fragt bei jedem Angebot die Retourenkosten pro Stück separat ab. Sie stehen selten in der Preisliste und entscheiden bei hoher Retourenquote über die gesamte Kalkulation.',
+  'Wachstum / Skalierung':
+    'Fragt Peak-Kapazität konkret in Stück pro Tag ab und ab wann sie angemeldet sein muss. "Machen wir schon" ist keine Zusage, eine Zahl im Vertrag schon.',
 };
 
 const FOLLOW_UP: Record<string, string> = {
-  'Akut — wir suchen jetzt': 'Weil ihr akut sucht, melden wir uns kurzfristig.',
-  'In den nächsten 1–3 Monaten': 'Wir melden uns in den nächsten Tagen.',
-  'Explorativ, wir informieren uns': 'Wir melden uns in Ruhe — ohne Druck im Nacken.',
+  high: 'Wir gleichen deine Angaben mit passenden Fulfillment-Anbietern ab und melden uns kurzfristig.',
+  medium: 'Wir gleichen deine Angaben mit passenden Anbietern ab und melden uns in den nächsten Tagen.',
+  low: 'Wir melden uns, sobald wir einen Anbieter sehen, der auch bei kleinerem Volumen zu euch passt.',
 };
 
 export function buildAssessment(answers: QuizAnswers): Assessment {
+  const tier = intentTier(answers);
+  const signal: Assessment['signal'] =
+    tier === 'high' ? 'green' : tier === 'medium' ? 'amber' : 'neutral';
+
   return {
-    scale: SCALE[answers.volume] ?? SCALE['500–1.000'],
-    storage: STORAGE[answers.storage] ?? null,
-    situation: SITUATION[answers.situation] ?? SITUATION['Inhouse / selbst'],
-    nextStep: NEXT_STEP[answers.challenge] ?? NEXT_STEP['Intransparente Kosten'],
-    followUp: FOLLOW_UP[answers.urgency] ?? FOLLOW_UP['In den nächsten 1–3 Monaten'],
+    headline: HEADLINE[tier],
+    signal,
+    verdict: VERDICT[tier],
+    reasoning: buildReasoning(answers),
+    nextStep: NEXT_STEP[answers.challenge] ?? NEXT_STEP['Zu viel Zeitaufwand'],
+    followUp: FOLLOW_UP[tier],
   };
 }

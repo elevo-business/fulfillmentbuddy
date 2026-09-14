@@ -3,12 +3,13 @@ import { submitLeadToMonday } from '@/lib/monday';
 import type { QuizAnswers } from '@/lib/scoring';
 
 const REQUIRED_FIELDS: (keyof QuizAnswers)[] = [
-  'volume',
   'role',
-  'storage',
-  'situation',
+  'volume',
+  'process',
+  'timeSpent',
   'challenge',
-  'urgency',
+  'growth',
+  'priority',
   'name',
   'company',
   'email',
@@ -66,8 +67,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { score } = await submitLeadToMonday(body as QuizAnswers);
-    return NextResponse.json({ ok: true, score });
+    const { score, itemId } = await submitLeadToMonday(body as QuizAnswers);
+    return NextResponse.json({ ok: true, score, itemId });
   } catch (err) {
     console.error('monday submit failed', err);
     return NextResponse.json(

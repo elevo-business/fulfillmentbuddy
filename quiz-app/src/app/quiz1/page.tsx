@@ -1,9 +1,5 @@
-import Quiz from '@/components/Quiz';
+import LandingPage from '@/components/LandingPage';
 
 export default function Page() {
-  return (
-    <main className="page">
-      <Quiz />
-    </main>
-  );
+  return <LandingPage />;
 }
