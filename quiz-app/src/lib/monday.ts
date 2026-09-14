@@ -13,7 +13,7 @@
 //      etwas verloren, auch wenn noch keine einzige Spalte existiert.
 
 import type { QuizAnswers } from './scoring';
-import { scoreLead, statusForScore } from './scoring';
+import { scoreLead, statusForLead, leadBlockers } from './scoring';
 
 const MONDAY_API_URL = 'https://api.monday.com/v2';
 const API_VERSION = '2024-10';
@@ -118,7 +118,7 @@ async function buildColumnValues(
     if (col) values[col.id] = valueForColumn(col, raw);
   };
 
-  set('Status', statusForScore(score));
+  set('Status', statusForLead(answers, score));
   const emailCol = findColumn(columns, 'E-Mail');
   if (emailCol) values[emailCol.id] = { email: answers.email, text: answers.email };
   if (answers.phone) {
@@ -126,6 +126,7 @@ async function buildColumnValues(
     if (phoneCol) values[phoneCol.id] = { phone: digitsOnly(answers.phone), countryShortName: 'DE' };
   }
   set('Unternehmen', answers.company);
+  set('Rolle', answers.role);
   set('Bestellvolumen/Monat', answers.volume);
   set('Lagerbedarf (Paletten/Monat)', answers.storage);
   set('Aktuelle Situation', answers.situation);
@@ -134,6 +135,17 @@ async function buildColumnValues(
   set('Lead-Score', String(score));
   if (answers.shopUrl) {
     set('Shop-Link', answers.shopUrl);
+  }
+  // Ergebnisse des Paketkosten-Rechners — die Ist-Kosten sind das stärkste
+  // Gesprächsargument für den Anbieter, der den Lead bekommt.
+  if (typeof answers.parcelsPerMonth === 'number') {
+    set('Pakete/Monat (Angabe)', String(Math.round(answers.parcelsPerMonth)));
+  }
+  if (typeof answers.costPerParcel === 'number') {
+    set('Ist-Kosten pro Paket', answers.costPerParcel.toFixed(2).replace('.', ','));
+  }
+  if (typeof answers.laborSharePct === 'number') {
+    set('Personalanteil %', String(Math.round(answers.laborSharePct)));
   }
   if (typeof answers.phoneVerified === 'boolean') {
     const verifiedCol = findColumn(columns, 'Telefon verifiziert');
@@ -144,6 +156,7 @@ async function buildColumnValues(
 }
 
 function formatUpdateBody(answers: QuizAnswers, score: number): string {
+  const blockers = leadBlockers(answers);
   return [
     `Neuer Quiz-Lead von fulfillmentbuddy.de`,
     ``,
@@ -153,13 +166,30 @@ function formatUpdateBody(answers: QuizAnswers, score: number): string {
     `Telefon: ${answers.phone}${answers.phoneVerified ? ' (SMS-verifiziert)' : ''}`,
     `Shoplink: ${answers.shopUrl || '—'}`,
     ``,
-    `Bestellvolumen/Monat: ${answers.volume}`,
+    `Rolle: ${answers.role}`,
+    `Bestellvolumen/Monat: ${answers.volume} (Angabe: ${
+      typeof answers.parcelsPerMonth === 'number' ? Math.round(answers.parcelsPerMonth) : '?'
+    } Pakete)`,
     `Lagerbedarf (Paletten/Monat): ${answers.storage}`,
     `Aktuelle Situation: ${answers.situation}`,
     `Größte Herausforderung: ${answers.challenge}`,
     `Dringlichkeit: ${answers.urgency}`,
     ``,
-    `Lead-Score: ${score}/100 (${statusForScore(score)})`,
+    ``,
+    `Selbst gerechnete Ist-Kosten pro Paket: ${
+      typeof answers.costPerParcel === 'number'
+        ? answers.costPerParcel.toFixed(2).replace('.', ',') + ' EUR'
+        : 'keine Angabe'
+    }`,
+    `Davon Personalanteil: ${
+      typeof answers.laborSharePct === 'number' ? Math.round(answers.laborSharePct) + ' %' : '—'
+    }`,
+    `Gebundene Vollzeitstellen: ${
+      typeof answers.fteEquivalent === 'number' ? answers.fteEquivalent.toFixed(1).replace('.', ',') : '—'
+    }`,
+    ``,
+    `Lead-Score: ${score}/100 (${statusForLead(answers, score)})`,
+    blockers.length ? `Ausschlussgründe: ${blockers.join(', ')}` : `Ausschlussgründe: keine`,
   ].join('\n');
 }
 

@@ -12,7 +12,7 @@ gescheitert: eine reine Static-Site-Resource kann keinen Node-Server für
 | `/` | Onepager (Hero, Zielgruppen, Anzeichen, Kriterien, Über uns) | Statisches HTML aus `public/index.html`, per Next-Rewrite |
 | `/impressum` | Impressum | Statisches HTML aus `public/impressum.html` |
 | `/datenschutz` | Datenschutzerklärung | Statisches HTML aus `public/datenschutz.html` |
-| `/quiz1` | Qualifizierungs-Quiz (6 Schritte) | Echte React-Route (`src/app/quiz1/page.tsx`) |
+| `/quiz1` | Paketkosten-Rechner + Qualifizierung (8 Schritte) | Echte React-Route (`src/app/quiz1/page.tsx`) |
 | `/api/submit` | Server-Route, nimmt Quiz-Antworten entgegen | `src/app/api/submit/route.ts`, ruft monday-API |
 | `/api/verify/send` | Startet SMS-OTP-Verifizierung fürs Telefonfeld | `src/app/api/verify/send/route.ts`, ruft Twilio Verify |
 | `/api/verify/check` | Prüft eingegebenen SMS-Code | `src/app/api/verify/check/route.ts`, ruft Twilio Verify |
@@ -43,9 +43,11 @@ src/
     quiz1/page.tsx        Quiz-Einstiegsseite
     api/submit/route.ts   Server-Route → monday CRM
     layout.tsx, globals.css   Layout & Styles für /quiz1
-  components/Quiz.tsx      6-Schritte-Quiz-Logik (Client-Component)
+  components/Quiz.tsx      Funnel-Logik, 8 Schritte (Client-Component)
   lib/
-    scoring.ts             Lead-Scoring (0–100, additiv)
+    costCalc.ts            Paketkosten-Rechner (reine Arithmetik, keine Benchmarks)
+    assessment.ts          Ergebnistexte für den Prospect
+    scoring.ts             Lead-Scoring (0–100, additiv) + harte Ausschlussgründe
     monday.ts               monday-API-Anbindung (robust, siehe unten)
 ```
 
@@ -92,11 +94,15 @@ andere einen einfachen Text):
 
 | Spaltentitel | Empfohlener Typ | Werte |
 |---|---|---|
-| Status | Status | Neuer Lead, Kontaktiert, Qualifiziert, Nicht qualifiziert, Kunde geworden — **kritisch:** löst die CAPI-Automation aus, die beim Label „Qualifiziert" ein Event an Meta sendet. Nicht löschen. |
+| Status | Status | Neuer Lead, Kontaktiert, Qualifiziert, **Nicht lieferbar**, Nicht qualifiziert, Kunde geworden — **kritisch:** löst die CAPI-Automation aus, die beim Label „Qualifiziert" ein Event an Meta sendet. Nicht löschen. „Nicht lieferbar" setzt die App selbst, wenn `leadBlockers()` anspringt. |
 | E-Mail | E-Mail | — |
 | Telefon | Telefon | — |
 | Unternehmen | Text | — |
-| Bestellvolumen/Monat | Text oder Status | Unter 500, 500–1.000, 1.000–2.000, 2.000+ |
+| Rolle | Text oder Status | Inhaber / Geschäftsführung, Betrieb / Logistik, Andere |
+| Bestellvolumen/Monat | Text oder Status | Unter 500, 500–1.000, 1.000–2.000, 2.000+ (wird aus der Paketzahl des Rechners abgeleitet, nicht mehr abgefragt) |
+| Pakete/Monat (Angabe) | Text oder Zahl | — (exakte Zahl aus dem Rechner) |
+| Ist-Kosten pro Paket | Text oder Zahl | — (vom Interessenten selbst gerechnet, in EUR) |
+| Personalanteil % | Text oder Zahl | — (Anteil Personal an seinen Abwicklungskosten) |
 | Lagerbedarf (Paletten/Monat) | Text oder Status | 0–10, 10–20, 30–50, 50+, Nicht sicher |
 | Aktuelle Situation | Text oder Status | Inhouse / selbst, Dienstleister vorhanden aber unzufrieden, Noch kein Fulfillment-Partner, Wachstum übersteigt aktuelle Kapazität |
 | Größte Herausforderung | Text oder Status | Steigende Fehlerquote & Retouren, Lagerkapazität am Limit, Saisonale Spitzen (z. B. Black Friday), Lieferzeiten & Kundenerwartung, Intransparente Kosten |
@@ -114,6 +120,43 @@ jedem Fall alle Antworten als vollständigen Kommentar am neuen Lead-Item, es
 geht nichts verloren. Fehlende Spalten werden beim Schreiben stillschweigend
 übersprungen (kein Code-Change nötig — die App fragt die Board-Struktur zur
 Laufzeit ab).
+
+## Funnel-Aufbau (`/quiz1`)
+
+Der Funnel beginnt mit einem **Paketkosten-Rechner** als Leadmagnet, nicht mit
+Fragen. Grund: In der ersten Ad-Testrunde kam die Mehrheit der Leads von
+Leuten, die die Anzeige für ein Jobangebot gehalten oder sich versehentlich
+eingetragen hatten. Ein Rechner, der die eigenen Betriebszahlen als Eingabe
+braucht, filtert das von sich aus aus, weil nur jemand mit eigenem Versand
+diese Zahlen kennt.
+
+Reihenfolge (8 Schritte, `Phase` in `Quiz.tsx`):
+
+1. **Rechner** — Pakete/Monat, Stunden/Woche, interner Stundensatz,
+   Verpackung pro Paket, Lagermiete. Logik in `src/lib/costCalc.ts`.
+2. **Ergebnis** — Ist-Kosten pro Paket, Aufschlüsselung, gebundene
+   Vollzeitstellen. Wird **ohne E-Mail-Gate** gezeigt; das Gate würde die
+   unverbindliche Eintragung zurückholen, die das ursprüngliche Problem war.
+3. bis 7. **Auswahlfragen** — Rolle (der direkte Filter), Lagerbedarf,
+   Situation, Herausforderung, Dringlichkeit.
+8. **Kontakt** — Name, Firma, E-Mail, Telefon (Pflicht), Shoplink (optional),
+   SMS-Bestätigung (optional).
+
+Zwei Dinge, die bewusst so sind:
+
+- **Porto ist nicht Teil der Rechnung.** Versandkosten zum Carrier zahlt der
+  Shop mit und ohne Dienstleister, sie verzerren den Vergleich nur. Gerechnet
+  wird der Abwicklungsaufwand.
+- **Keine Branchen-Benchmarks, nirgends.** Weder `costCalc.ts` noch
+  `assessment.ts` enthalten Vergleichswerte. Wir haben keine belastbaren
+  Marktzahlen und erfinden keine. Die einzigen Konstanten im Rechner sind
+  Umrechnungen (52/12 Wochen pro Monat, 40-Stunden-Woche für die
+  Vollzeitäquivalenz).
+
+`volume` wird nicht mehr abgefragt, sondern in `volumeBracket()` aus der
+Paketzahl abgeleitet. Die Label-Strings dort müssen zeichengleich zu
+`VOLUME_POINTS` in `scoring.ts` und zur monday-Spalte bleiben, sonst fällt
+die Punktevergabe still auf 0.
 
 ## Lokal entwickeln
 ```bash

@@ -2,9 +2,19 @@
 
 import { useState } from 'react';
 import { buildAssessment } from '@/lib/assessment';
+import {
+  calculateCosts,
+  parseNumber,
+  volumeBracket,
+  euro,
+  formatHours,
+  EMPTY_COST_INPUTS,
+  type CostInputs,
+  type CostResult,
+} from '@/lib/costCalc';
 
 type Answers = {
-  volume: string;
+  role: string;
   storage: string;
   situation: string;
   challenge: string;
@@ -18,7 +28,7 @@ type Answers = {
 };
 
 const EMPTY_ANSWERS: Answers = {
-  volume: '',
+  role: '',
   storage: '',
   situation: '',
   challenge: '',
@@ -32,16 +42,19 @@ const EMPTY_ANSWERS: Answers = {
 };
 
 type ChoiceStep = {
-  key: 'volume' | 'storage' | 'situation' | 'challenge' | 'urgency';
+  key: 'role' | 'storage' | 'situation' | 'challenge' | 'urgency';
   question: string;
   options: string[];
 };
 
+// Die Rollenfrage steht bewusst zuerst. Sie ist nach der ersten Testrunde
+// der direkte Filter: dort kam die Mehrheit der Leads von Leuten, die die
+// Anzeige für ein Jobangebot gehalten haben.
 const CHOICE_STEPS: ChoiceStep[] = [
   {
-    key: 'volume',
-    question: 'Wie viele Sendungen verschickt ihr aktuell pro Monat?',
-    options: ['Unter 500', '500–1.000', '1.000–2.000', '2.000+'],
+    key: 'role',
+    question: 'Welche Rolle hast du im Unternehmen?',
+    options: ['Inhaber / Geschäftsführung', 'Betrieb / Logistik', 'Andere'],
   },
   {
     key: 'storage',
@@ -76,12 +89,58 @@ const CHOICE_STEPS: ChoiceStep[] = [
   },
 ];
 
-const TOTAL_STEPS = CHOICE_STEPS.length + 1; // + Kontakt-Schritt
+type CalcField = {
+  key: keyof CostInputs;
+  label: string;
+  hint?: string;
+  suffix: string;
+  /** 0 ist eine gültige Antwort (z.B. kein separates Lager) */
+  allowZero?: boolean;
+};
+
+const CALC_FIELDS: CalcField[] = [
+  { key: 'parcels', label: 'Pakete pro Monat', suffix: 'Pakete' },
+  {
+    key: 'hoursPerWeek',
+    label: 'Stunden pro Woche für Packen und Versand',
+    hint: 'Alle Beteiligten zusammengerechnet.',
+    suffix: 'Std.',
+    allowZero: true,
+  },
+  {
+    key: 'hourlyRate',
+    label: 'Interner Stundensatz',
+    hint: 'Vollkosten, also inklusive Arbeitgeberanteil.',
+    suffix: '€ / Std.',
+  },
+  {
+    key: 'packagingPerParcel',
+    label: 'Verpackungsmaterial pro Paket',
+    hint: 'Karton, Füllmaterial, Etikett.',
+    suffix: '€',
+    allowZero: true,
+  },
+  {
+    key: 'warehouseRent',
+    label: 'Lagermiete pro Monat',
+    hint: 'Null eintragen, wenn keine separate Fläche anfällt.',
+    suffix: '€',
+    allowZero: true,
+  },
+];
+
+// Rechner, Ergebnis, Auswahlfragen, Kontakt
+const TOTAL_STEPS = 2 + CHOICE_STEPS.length + 1;
+
+type Phase = 'intro' | 'calc' | 'result' | 'choices' | 'contact';
 
 export default function Quiz() {
-  const [started, setStarted] = useState(false);
-  const [stepIndex, setStepIndex] = useState(0);
+  const [phase, setPhase] = useState<Phase>('intro');
+  const [choiceIndex, setChoiceIndex] = useState(0);
   const [answers, setAnswers] = useState<Answers>(EMPTY_ANSWERS);
+  const [calcRaw, setCalcRaw] = useState<Record<keyof CostInputs, string>>({ ...EMPTY_COST_INPUTS });
+  const [cost, setCost] = useState<CostResult | null>(null);
+  const [parcels, setParcels] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -99,19 +158,63 @@ export default function Quiz() {
   const [otpChecking, setOtpChecking] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
 
-  const isContactStep = stepIndex === CHOICE_STEPS.length;
-  const progressPct = done
-    ? 100
-    : Math.round((stepIndex / TOTAL_STEPS) * 100);
+  const stepNumber =
+    phase === 'calc' ? 1 : phase === 'result' ? 2 : phase === 'choices' ? 3 + choiceIndex : TOTAL_STEPS;
+  const progressPct = done ? 100 : Math.round(((stepNumber - 1) / TOTAL_STEPS) * 100);
+
+  function updateCalc(key: keyof CostInputs, value: string) {
+    setCalcRaw((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function submitCalc() {
+    const errors: Record<string, string> = {};
+    const parsed: Partial<CostInputs> = {};
+
+    for (const f of CALC_FIELDS) {
+      const n = parseNumber(calcRaw[f.key]);
+      if (Number.isNaN(n)) {
+        errors[f.key] = 'Bitte eine Zahl eintragen.';
+      } else if (n < 0) {
+        errors[f.key] = 'Bitte keine negative Zahl.';
+      } else if (n === 0 && !f.allowZero) {
+        errors[f.key] = 'Bitte einen Wert größer als null eintragen.';
+      } else {
+        parsed[f.key] = n;
+      }
+    }
+
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    const inputs = parsed as CostInputs;
+    setParcels(inputs.parcels);
+    setCost(calculateCosts(inputs));
+    setPhase('result');
+  }
 
   function selectChoice(key: ChoiceStep['key'], value: string) {
     setAnswers((prev) => ({ ...prev, [key]: value }));
-    setTimeout(() => setStepIndex((i) => i + 1), 180);
+    setTimeout(() => {
+      if (choiceIndex + 1 < CHOICE_STEPS.length) {
+        setChoiceIndex((i) => i + 1);
+      } else {
+        setPhase('contact');
+      }
+    }, 180);
   }
 
   function goBack() {
     setSubmitError(null);
-    setStepIndex((i) => Math.max(0, i - 1));
+    setFormErrors({});
+    if (phase === 'contact') {
+      setPhase('choices');
+      setChoiceIndex(CHOICE_STEPS.length - 1);
+    } else if (phase === 'choices') {
+      if (choiceIndex > 0) setChoiceIndex((i) => i - 1);
+      else setPhase('result');
+    } else if (phase === 'result') {
+      setPhase('calc');
+    }
   }
 
   function updateField(field: keyof Answers, value: string) {
@@ -199,7 +302,17 @@ export default function Quiz() {
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...answers, phoneVerified }),
+        body: JSON.stringify({
+          ...answers,
+          // volume wird aus der Paketzahl des Rechners abgeleitet und nicht
+          // mehr separat abgefragt.
+          volume: volumeBracket(parcels),
+          phoneVerified,
+          parcelsPerMonth: parcels,
+          costPerParcel: cost?.costPerParcel,
+          laborSharePct: cost ? cost.laborShare * 100 : undefined,
+          fteEquivalent: cost?.fteEquivalent,
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -224,7 +337,8 @@ export default function Quiz() {
 
   if (done) {
     const a = buildAssessment({
-      volume: answers.volume,
+      volume: volumeBracket(parcels),
+      role: answers.role,
       storage: answers.storage,
       situation: answers.situation,
       challenge: answers.challenge,
@@ -243,6 +357,16 @@ export default function Quiz() {
           Danke{firstName ? `, ${firstName}` : ''}. Hier schon mal, wie wir eure
           Angaben lesen:
         </h2>
+
+        {cost && (
+          <div className="result-block">
+            <h3>Eure gerechneten Ist-Kosten</h3>
+            <p>
+              <strong>{euro(cost.costPerParcel)} pro Paket</strong>, davon{' '}
+              {euro(cost.laborPerParcel)} Personal.
+            </p>
+          </div>
+        )}
 
         <div className="result-block">
           <h3>Größenordnung</h3>
@@ -272,24 +396,24 @@ export default function Quiz() {
     );
   }
 
-  if (!started) {
+  if (phase === 'intro') {
     return (
       <div className="quiz-card">
         <div className="intro">
-          <p className="step-label">Fulfillment-Partner finden</p>
-          <h2>Welcher Fulfillment-Anbieter passt zu eurem Volumen?</h2>
+          <p className="step-label">Paketkosten-Rechner</p>
+          <h2>Was kostet euch ein Paket wirklich?</h2>
           <p className="intro-sub">
-            {CHOICE_STEPS.length} Fragen zu eurem Setup. Auf dieser Basis gleichen wir
-            eure Anforderungen mit Fulfillment-Anbietern ab — passt es, meldet sich
-            der Anbieter direkt bei euch.
+            Fünf Zahlen aus eurem Betrieb, dann seht ihr eure Ist-Kosten pro Paket.
+            Inklusive der Stunden, die in keiner Kalkulation stehen, weil sie in den
+            Gehältern stecken.
           </p>
           <ul className="intro-perks">
-            <li><span aria-hidden="true">⏱️</span> 2 Minuten statt wochenlanger Anbieter-Recherche</li>
-            <li><span aria-hidden="true">🎯</span> Vorauswahl nach Volumen, Warenart und Zeitrahmen</li>
-            <li><span aria-hidden="true">🔒</span> Unverbindlich — ihr entscheidet, mit wem ihr sprecht</li>
+            <li><span aria-hidden="true">🧮</span> Eure eigenen Zahlen, keine Branchendurchschnitte</li>
+            <li><span aria-hidden="true">👀</span> Ergebnis direkt sichtbar, ohne E-Mail vorher</li>
+            <li><span aria-hidden="true">🔒</span> Unverbindlich, ihr entscheidet, mit wem ihr sprecht</li>
           </ul>
-          <button className="btn-primary btn-start" onClick={() => setStarted(true)} type="button">
-            Passende Anbieter finden →
+          <button className="btn-primary btn-start" onClick={() => setPhase('calc')} type="button">
+            Paketkosten berechnen →
           </button>
         </div>
       </div>
@@ -302,17 +426,116 @@ export default function Quiz() {
         <div className="progress-fill" style={{ width: `${progressPct}%` }} />
       </div>
 
-      {!isContactStep && (
+      {phase === 'calc' && (
+        <div>
+          <p className="step-label">Schritt 1 von {TOTAL_STEPS}</p>
+          <h2>Eure Zahlen</h2>
+          <p className="intro-sub">
+            Schätzwerte reichen. Porto lassen wir absichtlich weg, das zahlt ihr mit
+            und ohne Dienstleister.
+          </p>
+
+          {CALC_FIELDS.map((f) => (
+            <div className="field" key={f.key}>
+              <label htmlFor={f.key}>{f.label}</label>
+              {f.hint && <span className="field-hint">{f.hint}</span>}
+              <div className="calc-input">
+                <input
+                  id={f.key}
+                  type="text"
+                  inputMode="decimal"
+                  value={calcRaw[f.key]}
+                  onChange={(e) => updateCalc(f.key, e.target.value)}
+                />
+                <span className="calc-suffix">{f.suffix}</span>
+              </div>
+              {formErrors[f.key] && <p className="error-text">{formErrors[f.key]}</p>}
+            </div>
+          ))}
+
+          <div className="nav-row">
+            <button className="btn-ghost" onClick={() => setPhase('intro')} type="button">
+              Zurück
+            </button>
+            <button className="btn-primary" onClick={submitCalc} type="button">
+              Ergebnis anzeigen →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'result' && cost && (
+        <div>
+          <p className="step-label">Schritt 2 von {TOTAL_STEPS}</p>
+          <h2>Euer Ist-Wert</h2>
+
+          <div className="cost-headline">
+            <span className="cost-value">{euro(cost.costPerParcel)}</span>
+            <span className="cost-unit">pro Paket, nur Abwicklung</span>
+          </div>
+
+          <div className="result-block">
+            <h3>Woraus sich das zusammensetzt</h3>
+            <div className="cost-rows">
+              <div className="cost-row">
+                <span>Personal</span>
+                <b>{euro(cost.laborPerMonth)} / Monat</b>
+              </div>
+              <div className="cost-row">
+                <span>Verpackung</span>
+                <b>{euro(cost.packagingPerMonth)} / Monat</b>
+              </div>
+              <div className="cost-row">
+                <span>Lagerfläche</span>
+                <b>{euro(cost.rentPerMonth)} / Monat</b>
+              </div>
+              <div className="cost-row cost-row--total">
+                <span>Summe</span>
+                <b>{euro(cost.totalPerMonth)} / Monat</b>
+              </div>
+            </div>
+          </div>
+
+          <div className="result-block result-block--accent">
+            <h3>Die Zeile, die meist fehlt</h3>
+            <p>
+              Der Versand bindet bei euch{' '}
+              <strong>{formatHours(cost.hoursPerMonth)} Stunden im Monat</strong>, das
+              entspricht {cost.fteEquivalent.toFixed(1).replace('.', ',')} Vollzeitstellen.
+              Personal macht damit{' '}
+              <strong>{Math.round(cost.laborShare * 100)} %</strong> eurer Abwicklungskosten
+              aus, also {euro(cost.laborPerParcel)} pro Paket.
+            </p>
+          </div>
+
+          <p className="privacy-note">
+            Das ist reine Arithmetik auf euren Angaben, kein Branchenvergleich. Ob ein
+            Dienstleister günstiger ist, hängt an seinem Angebot, nicht an dieser Zahl.
+          </p>
+
+          <div className="nav-row">
+            <button className="btn-ghost" onClick={goBack} type="button">
+              Zahlen ändern
+            </button>
+            <button className="btn-primary" onClick={() => setPhase('choices')} type="button">
+              Passende Anbieter finden →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === 'choices' && (
         <ChoiceStepView
-          step={CHOICE_STEPS[stepIndex]}
-          stepIndex={stepIndex}
-          selected={answers[CHOICE_STEPS[stepIndex].key]}
-          onSelect={(value) => selectChoice(CHOICE_STEPS[stepIndex].key, value)}
-          onBack={stepIndex > 0 ? goBack : undefined}
+          step={CHOICE_STEPS[choiceIndex]}
+          stepNumber={stepNumber}
+          totalSteps={TOTAL_STEPS}
+          selected={answers[CHOICE_STEPS[choiceIndex].key]}
+          onSelect={(value) => selectChoice(CHOICE_STEPS[choiceIndex].key, value)}
+          onBack={goBack}
         />
       )}
 
-      {isContactStep && (
+      {phase === 'contact' && (
         <div>
           <p className="step-label">Schritt {TOTAL_STEPS} von {TOTAL_STEPS}</p>
           <h2>Wohin soll sich der passende Anbieter melden?</h2>
@@ -447,20 +670,22 @@ export default function Quiz() {
 
 function ChoiceStepView({
   step,
-  stepIndex,
+  stepNumber,
+  totalSteps,
   selected,
   onSelect,
   onBack,
 }: {
   step: ChoiceStep;
-  stepIndex: number;
+  stepNumber: number;
+  totalSteps: number;
   selected: string;
   onSelect: (value: string) => void;
-  onBack?: () => void;
+  onBack: () => void;
 }) {
   return (
     <div>
-      <p className="step-label">Schritt {stepIndex + 1} von {TOTAL_STEPS}</p>
+      <p className="step-label">Schritt {stepNumber} von {totalSteps}</p>
       <h2>{step.question}</h2>
       <div className="options">
         {step.options.map((opt) => (
@@ -474,14 +699,12 @@ function ChoiceStepView({
           </button>
         ))}
       </div>
-      {onBack && (
-        <div className="nav-row">
-          <button className="btn-ghost" onClick={onBack} type="button">
-            Zurück
-          </button>
-          <span />
-        </div>
-      )}
+      <div className="nav-row">
+        <button className="btn-ghost" onClick={onBack} type="button">
+          Zurück
+        </button>
+        <span />
+      </div>
     </div>
   );
 }
