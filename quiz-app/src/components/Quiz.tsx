@@ -42,20 +42,24 @@ const EMPTY_ANSWERS: Answers = {
 };
 
 type ChoiceStep = {
-  key: 'role' | 'storage' | 'situation' | 'challenge' | 'urgency';
+  key: 'storage' | 'situation' | 'challenge' | 'urgency';
   question: string;
   options: string[];
 };
 
-// Die Rollenfrage steht bewusst zuerst. Sie ist nach der ersten Testrunde
-// der direkte Filter: dort kam die Mehrheit der Leads von Leuten, die die
-// Anzeige für ein Jobangebot gehalten haben.
+// Rollenfrage: eigene Phase ('gate'), nicht Teil von CHOICE_STEPS, mit
+// eigenem State statt dem generischen ChoiceStep-Mechanismus (sie steuert
+// eine Weiche, kein normaler Fragenschritt). Zwei der drei aktuell
+// laufenden Ad-Creatives versprechen allgemeine "Fulfillment
+// auslagern"-Hilfe statt konkret den Rechner — dadurch ist der eingehende
+// Traffic breiter/weniger vorqualifiziert als in der ersten Runde. Die
+// Rollenfrage steht deshalb VOR dem Rechner (statt wie vorher danach):
+// ein Klick filtert Job-Interessenten und Neugierige raus, bevor sie fünf
+// Felder ausfüllen — schont ihre Zeit und hält die Rechner-
+// Completion-Rate als Kennzahl aussagekräftig.
+const ROLE_OPTIONS = ['Inhaber / Geschäftsführung', 'Betrieb / Logistik', 'Andere'];
+
 const CHOICE_STEPS: ChoiceStep[] = [
-  {
-    key: 'role',
-    question: 'Welche Rolle hast du im Unternehmen?',
-    options: ['Inhaber / Geschäftsführung', 'Betrieb / Logistik', 'Andere'],
-  },
   {
     key: 'storage',
     question: 'Wie hoch ist euer durchschnittlicher Lagerbedarf in Paletten pro Monat?',
@@ -129,10 +133,10 @@ const CALC_FIELDS: CalcField[] = [
   },
 ];
 
-// Rechner, Ergebnis, Auswahlfragen, Kontakt
-const TOTAL_STEPS = 2 + CHOICE_STEPS.length + 1;
+// Gate (Rolle), Rechner, Ergebnis, Auswahlfragen, Kontakt
+const TOTAL_STEPS = 3 + CHOICE_STEPS.length + 1;
 
-type Phase = 'intro' | 'calc' | 'result' | 'choices' | 'contact';
+type Phase = 'intro' | 'gate' | 'notFit' | 'calc' | 'result' | 'choices' | 'contact';
 
 export default function Quiz() {
   const [phase, setPhase] = useState<Phase>('intro');
@@ -159,8 +163,23 @@ export default function Quiz() {
   const [otpError, setOtpError] = useState<string | null>(null);
 
   const stepNumber =
-    phase === 'calc' ? 1 : phase === 'result' ? 2 : phase === 'choices' ? 3 + choiceIndex : TOTAL_STEPS;
+    phase === 'gate'
+      ? 1
+      : phase === 'calc'
+        ? 2
+        : phase === 'result'
+          ? 3
+          : phase === 'choices'
+            ? 4 + choiceIndex
+            : TOTAL_STEPS;
   const progressPct = done ? 100 : Math.round(((stepNumber - 1) / TOTAL_STEPS) * 100);
+
+  function selectRole(value: string) {
+    updateField('role', value);
+    setTimeout(() => {
+      setPhase(value === 'Andere' ? 'notFit' : 'calc');
+    }, 180);
+  }
 
   function updateCalc(key: keyof CostInputs, value: string) {
     setCalcRaw((prev) => ({ ...prev, [key]: value }));
@@ -214,6 +233,8 @@ export default function Quiz() {
       else setPhase('result');
     } else if (phase === 'result') {
       setPhase('calc');
+    } else if (phase === 'calc') {
+      setPhase('gate');
     }
   }
 
@@ -400,20 +421,41 @@ export default function Quiz() {
     return (
       <div className="quiz-card">
         <div className="intro">
-          <p className="step-label">Paketkosten-Rechner</p>
-          <h2>Was kostet euch ein Paket wirklich?</h2>
+          <p className="step-label">Fulfillment auslagern</p>
+          <h2>Bevor wir euch mit einem Anbieter verbinden: eure Zahlen.</h2>
           <p className="intro-sub">
-            Fünf Zahlen aus eurem Betrieb, dann seht ihr eure Ist-Kosten pro Paket.
-            Inklusive der Stunden, die in keiner Kalkulation stehen, weil sie in den
-            Gehältern stecken.
+            Fünf Angaben aus eurem Betrieb, dann seht ihr eure Ist-Kosten pro Paket —
+            inklusive der Stunden, die in keiner Kalkulation stehen, weil sie in den
+            Gehältern stecken. Auf dieser Basis gleichen wir euch mit passenden
+            Fulfillment-Anbietern ab.
           </p>
           <ul className="intro-perks">
             <li><span aria-hidden="true">🧮</span> Eure eigenen Zahlen, keine Branchendurchschnitte</li>
             <li><span aria-hidden="true">👀</span> Ergebnis direkt sichtbar, ohne E-Mail vorher</li>
             <li><span aria-hidden="true">🔒</span> Unverbindlich, ihr entscheidet, mit wem ihr sprecht</li>
           </ul>
-          <button className="btn-primary btn-start" onClick={() => setPhase('calc')} type="button">
-            Paketkosten berechnen →
+          <button className="btn-primary btn-start" onClick={() => setPhase('gate')} type="button">
+            Los geht's →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'notFit') {
+    return (
+      <div className="quiz-card">
+        <div className="intro">
+          <p className="step-label">Kurz gecheckt</p>
+          <h2>Das hier ist für Shop-Betreiber gemacht</h2>
+          <p className="intro-sub">
+            Der Rechner und die Anbieter-Vermittlung richten sich an Inhaber und
+            Betriebsverantwortliche eines Online-Shops mit eigenem Versand. Das
+            scheint bei euch aktuell nicht zu passen — schaut gerne auf{' '}
+            <a href="/">fulfillmentbuddy.de</a> vorbei, falls sich das ändert.
+          </p>
+          <button className="btn-ghost" onClick={() => setPhase('gate')} type="button">
+            Zurück
           </button>
         </div>
       </div>
@@ -426,9 +468,34 @@ export default function Quiz() {
         <div className="progress-fill" style={{ width: `${progressPct}%` }} />
       </div>
 
-      {phase === 'calc' && (
+      {phase === 'gate' && (
         <div>
           <p className="step-label">Schritt 1 von {TOTAL_STEPS}</p>
+          <h2>Welche Rolle hast du im Unternehmen?</h2>
+          <div className="options">
+            {ROLE_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                className={`option-btn${answers.role === opt ? ' selected' : ''}`}
+                onClick={() => selectRole(opt)}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+          <div className="nav-row">
+            <button className="btn-ghost" onClick={() => setPhase('intro')} type="button">
+              Zurück
+            </button>
+            <span />
+          </div>
+        </div>
+      )}
+
+      {phase === 'calc' && (
+        <div>
+          <p className="step-label">Schritt 2 von {TOTAL_STEPS}</p>
           <h2>Eure Zahlen</h2>
           <p className="intro-sub">
             Schätzwerte reichen. Porto lassen wir absichtlich weg, das zahlt ihr mit
@@ -454,7 +521,7 @@ export default function Quiz() {
           ))}
 
           <div className="nav-row">
-            <button className="btn-ghost" onClick={() => setPhase('intro')} type="button">
+            <button className="btn-ghost" onClick={() => setPhase('gate')} type="button">
               Zurück
             </button>
             <button className="btn-primary" onClick={submitCalc} type="button">
@@ -466,7 +533,7 @@ export default function Quiz() {
 
       {phase === 'result' && cost && (
         <div>
-          <p className="step-label">Schritt 2 von {TOTAL_STEPS}</p>
+          <p className="step-label">Schritt 3 von {TOTAL_STEPS}</p>
           <h2>Euer Ist-Wert</h2>
 
           <div className="cost-headline">
