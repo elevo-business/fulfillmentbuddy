@@ -35,7 +35,8 @@ type Answers = {
   email: string;
   phone: string;
   shopUrl: string;
-  website: string; // honeypot
+  /** Honeypot. Name bewusst ohne URL-Semantik — siehe Kommentar am Feld. */
+  contactReference: string;
 };
 
 const EMPTY_ANSWERS: Answers = {
@@ -51,7 +52,7 @@ const EMPTY_ANSWERS: Answers = {
   email: '',
   phone: '',
   shopUrl: '',
-  website: '',
+  contactReference: '',
 };
 
 type QuestionKey = 'volume' | 'process' | 'timeSpent' | 'challenge' | 'growth' | 'priority';
@@ -276,7 +277,14 @@ export default function Quiz() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Unbekannter Fehler');
-      if (typeof data.itemId === 'string') setItemId(data.itemId);
+      // Ohne itemId liegt nichts im CRM — dann ist es kein Lead, egal was der
+      // Statuscode sagt. Ein Lead-Event ohne Eintrag dahinter lässt Meta auf
+      // Phantom-Conversions optimieren und zeigt dem Nutzer einen
+      // Erfolgsbildschirm für eine Anfrage, die niemanden erreicht hat.
+      if (typeof data.itemId !== 'string') {
+        throw new Error('Deine Anfrage konnte nicht gespeichert werden. Bitte versuch es gleich nochmal.');
+      }
+      setItemId(data.itemId);
       // Meta Lead-Event erst NACH erfolgreichem Absenden feuern — sonst
       // zählt jeder Versuch, nicht nur die eingegangene Anfrage.
       track('Lead');
@@ -653,15 +661,22 @@ export default function Quiz() {
             />
           </div>
 
-          {/* Honeypot — für Menschen unsichtbar, Bots füllen es oft trotzdem aus */}
+          {/* Honeypot — für Menschen unsichtbar (.honeypot in globals.css).
+              Der Feldname trägt bewusst keine URL-Semantik mehr: Ein Feld
+              namens "website" direkt neben dem sichtbaren Shoplink-Feld wird
+              von Passwortmanagern und Browser-Autofill befüllt, die
+              autoComplete="off" schlicht ignorieren. Genau das hat am 11.09.
+              zwei echte Anfragen gekostet, bevor der Server sie nicht mehr
+              still verworfen hat. */}
           <div className="honeypot" aria-hidden="true">
-            <label htmlFor="website">Website</label>
+            <label htmlFor="contact-reference">Referenz</label>
             <input
-              id="website"
+              id="contact-reference"
+              name="contact-reference"
               tabIndex={-1}
               autoComplete="off"
-              value={answers.website}
-              onChange={(e) => updateField('website', e.target.value)}
+              value={answers.contactReference}
+              onChange={(e) => updateField('contactReference', e.target.value)}
             />
           </div>
 

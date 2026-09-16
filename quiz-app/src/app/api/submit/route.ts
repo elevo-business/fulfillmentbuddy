@@ -61,13 +61,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ungültige E-Mail-Adresse.' }, { status: 400 });
   }
 
-  // Honeypot: unsichtbares Feld, das nur Bots ausfüllen.
-  if ((body as Record<string, unknown>).website) {
-    return NextResponse.json({ ok: true }); // still 200, aber wir tun nichts
+  // Honeypot: unsichtbares Feld, das nur Bots ausfüllen sollten.
+  //
+  // Früher wurde hier still mit 200 geantwortet und nichts angelegt. Der
+  // Client kann das nicht von Erfolg unterscheiden: er feuert trotzdem das
+  // Meta-Lead-Event und zeigt dem Nutzer den Erfolgsbildschirm. Am 11.09.
+  // sind so zwei Anfragen spurlos verschwunden — Browser-Autofill und
+  // Passwortmanager füllen ein Feld namens "website" regelmäßig mit, obwohl
+  // es unsichtbar ist und autoComplete="off" trägt.
+  //
+  // Bei diesem Lead-Volumen ist ein durchgerutschter Bot ungleich billiger
+  // als ein verlorener echter Lead. Deshalb: immer anlegen, Verdacht nur
+  // markieren. `website` wird mitgeprüft, damit noch ausgelieferte alte
+  // Clients während des Rollouts weiter korrekt behandelt werden.
+  const raw = body as Record<string, unknown>;
+  const suspectedBot = Boolean(raw.contactReference || raw.website);
+  if (suspectedBot) {
+    console.warn('Honeypot ausgelöst — Lead wird trotzdem angelegt', {
+      company: body.company,
+      email: body.email,
+    });
   }
 
   try {
-    const { score, itemId } = await submitLeadToMonday(body as QuizAnswers);
+    const { score, itemId } = await submitLeadToMonday(body as QuizAnswers, { suspectedBot });
     return NextResponse.json({ ok: true, score, itemId });
   } catch (err) {
     console.error('monday submit failed', err);

@@ -146,10 +146,18 @@ async function buildColumnValues(
   return values;
 }
 
-function formatUpdateBody(answers: QuizAnswers, score: number): string {
+function formatUpdateBody(answers: QuizAnswers, score: number, suspectedBot: boolean): string {
   const blockers = leadBlockers(answers);
   return [
     `Neuer Quiz-Lead von fulfillmentbuddy.de`,
+    ...(suspectedBot
+      ? [
+          ``,
+          `⚠️ SPAM-VERDACHT: Das Honeypot-Feld war ausgefüllt. Kann ein Bot`,
+          `sein — oder ein echter Interessent, dessen Browser das unsichtbare`,
+          `Feld automatisch befüllt hat. Vor dem Verwerfen kurz prüfen.`,
+        ]
+      : []),
     ``,
     `Firma: ${answers.company}`,
     `Ansprechpartner: ${answers.name}`,
@@ -229,7 +237,10 @@ export async function enrichLeadWithCosts(
   );
 }
 
-export async function submitLeadToMonday(answers: QuizAnswers): Promise<{ itemId: string; score: number }> {
+export async function submitLeadToMonday(
+  answers: QuizAnswers,
+  options: { suspectedBot?: boolean } = {}
+): Promise<{ itemId: string; score: number }> {
   const score = scoreLead(answers);
   const itemName = `${answers.company} — ${answers.name}`;
   const columnValues = await buildColumnValues(answers, score);
@@ -254,12 +265,24 @@ export async function submitLeadToMonday(answers: QuizAnswers): Promise<{ itemId
 
   // Vollständige Antworten immer zusätzlich als Update hinterlegen —
   // unabhängig davon, welche Spalten gerade existieren.
-  await mondayRequest(
-    `mutation ($itemId: ID!, $body: String!) {
-      create_update(item_id: $itemId, body: $body) { id }
-    }`,
-    { itemId, body: formatUpdateBody(answers, score) }
-  );
+  //
+  // Das Update darf den Lead nicht mitreißen: Das Item ist an dieser Stelle
+  // bereits angelegt. Würde ein Fehler hier durchschlagen, antwortete die
+  // Route mit 502, der Nutzer sähe fälschlich einen Fehler, kein Lead-Event
+  // feuerte — und beim zweiten Versuch entstünde ein Duplikat.
+  try {
+    await mondayRequest(
+      `mutation ($itemId: ID!, $body: String!) {
+        create_update(item_id: $itemId, body: $body) { id }
+      }`,
+      { itemId, body: formatUpdateBody(answers, score, Boolean(options.suspectedBot)) }
+    );
+  } catch (err) {
+    console.error(
+      `monday create_update fehlgeschlagen — Item ${itemId} existiert bereits, Antworten fehlen im Verlauf`,
+      err
+    );
+  }
 
   return { itemId, score };
 }
