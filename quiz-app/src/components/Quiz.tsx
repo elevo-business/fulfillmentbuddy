@@ -138,16 +138,6 @@ export default function Quiz() {
    *  nach, statt einen zweiten Lead anzulegen. */
   const [itemId, setItemId] = useState<string | null>(null);
 
-  // Telefon-Verifizierung per SMS-OTP (Twilio Verify). Optional: die
-  // Pflicht war die wahrscheinlichste Ursache dafür, dass von 266
-  // Ad-Klicks kein einziges Formular abgeschickt wurde.
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [otpSending, setOtpSending] = useState(false);
-  const [otpChecking, setOtpChecking] = useState(false);
-  const [otpError, setOtpError] = useState<string | null>(null);
-
   const totalQuestions = QUESTIONS.length;
   const answeredCount = phase === 'contact' ? totalQuestions : qIndex;
   const progressPct =
@@ -197,62 +187,6 @@ export default function Quiz() {
     }
   }
 
-  function updatePhone(value: string) {
-    updateField('phone', value);
-    // Neue Nummer eingetippt -> vorherige Verifizierung ist hinfällig.
-    setPhoneVerified(false);
-    setOtpSent(false);
-    setOtpCode('');
-    setOtpError(null);
-  }
-
-  async function sendOtp() {
-    if (!answers.phone.trim()) {
-      setFormErrors((prev) => ({ ...prev, phone: 'Bitte zuerst Telefonnummer angeben.' }));
-      return;
-    }
-    setOtpSending(true);
-    setOtpError(null);
-    try {
-      const res = await fetch('/api/verify/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: answers.phone }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Code konnte nicht gesendet werden.');
-      setOtpSent(true);
-    } catch (err) {
-      setOtpError(err instanceof Error ? err.message : 'Code konnte nicht gesendet werden.');
-    } finally {
-      setOtpSending(false);
-    }
-  }
-
-  async function checkOtp() {
-    if (!otpCode.trim()) {
-      setOtpError('Bitte Code eingeben.');
-      return;
-    }
-    setOtpChecking(true);
-    setOtpError(null);
-    try {
-      const res = await fetch('/api/verify/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: answers.phone, code: otpCode }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Prüfung fehlgeschlagen.');
-      if (data.verified) setPhoneVerified(true);
-      else setOtpError('Code stimmt nicht. Bitte prüfen und nochmal versuchen.');
-    } catch (err) {
-      setOtpError(err instanceof Error ? err.message : 'Prüfung fehlgeschlagen.');
-    } finally {
-      setOtpChecking(false);
-    }
-  }
-
   function validateContact(): boolean {
     const errors: Record<string, string> = {};
     if (!answers.name.trim()) errors.name = 'Bitte Namen angeben.';
@@ -273,7 +207,7 @@ export default function Quiz() {
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...answers, phoneVerified }),
+        body: JSON.stringify(answers),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Unbekannter Fehler');
@@ -610,41 +544,10 @@ export default function Quiz() {
               id="phone"
               type="tel"
               value={answers.phone}
-              onChange={(e) => updatePhone(e.target.value)}
+              onChange={(e) => updateField('phone', e.target.value)}
               autoComplete="tel"
-              required
             />
             {formErrors.phone && <p className="error-text">{formErrors.phone}</p>}
-
-            {phoneVerified ? (
-              <p className="otp-success">✓ Nummer bestätigt</p>
-            ) : (
-              <div className="otp-row">
-                {!otpSent ? (
-                  <button type="button" className="btn-ghost otp-btn" onClick={sendOtp} disabled={otpSending}>
-                    {otpSending ? 'Code wird gesendet …' : 'Nummer per SMS bestätigen (optional)'}
-                  </button>
-                ) : (
-                  <div className="otp-check">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="Code aus SMS"
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value)}
-                      className="otp-input"
-                    />
-                    <button type="button" className="btn-ghost otp-btn" onClick={checkOtp} disabled={otpChecking}>
-                      {otpChecking ? 'Prüfe …' : 'Bestätigen'}
-                    </button>
-                    <button type="button" className="btn-ghost otp-resend" onClick={sendOtp} disabled={otpSending}>
-                      Neu senden
-                    </button>
-                  </div>
-                )}
-                {otpError && <p className="error-text">{otpError}</p>}
-              </div>
-            )}
           </div>
 
           <div className="field">
@@ -682,12 +585,17 @@ export default function Quiz() {
 
           {submitError && <p className="error-text">{submitError}</p>}
 
+          {/* Kein Datenschutz-Hinweis ist hier keine Option: die Nummer geht
+              an einen Anbieter, der anruft — Telefonwerbung ohne vorherige
+              Einwilligung ist nach § 7 UWG abmahnfähig, und die Offenlegung
+              bei Weitergabe an Dritte verlangt Art. 13 DSGVO. Kurz halten,
+              aber nicht weglassen: Nutzen zuerst, "ein Anbieter" statt
+              "passende Anbieter" im Plural (weniger nach Massenverteilung). */}
           <p className="privacy-note">
-            Mit dem Absenden willigst du ein, dass wir deine Angaben an passende
-            Fulfillment-Anbieter weitergeben, damit diese dich kontaktieren können.
-            Details in der{' '}
+            Du bekommst deine Einschätzung sofort. Passt Auslagern zu deinem Shop,
+            verbinden wir dich mit einem passenden Anbieter.{' '}
             <a href="/datenschutz" target="_blank" rel="noopener noreferrer">
-              Datenschutzerklärung
+              Datenschutz
             </a>
             .
           </p>
