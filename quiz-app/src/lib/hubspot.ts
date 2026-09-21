@@ -39,6 +39,23 @@ export type LeadAttribution = {
   referrer?: string;
 };
 
+/**
+ * HubSpot hat die E-Mail-Adresse abgelehnt.
+ *
+ * Eigener Typ, weil das der einzige Fehlerfall ist, den der Nutzer selbst
+ * beheben kann — und der einzige, bei dem ein Fallback in ein anderes CRM
+ * das Falsche waere: die Adresse ist dann dort zwar gespeichert, aber
+ * unbrauchbar. Besser sofort nachfragen, solange der Interessent noch auf
+ * der Seite ist. HubSpot prueft strenger als unsere eigene Regex (u.a.
+ * gegen existierende TLDs), faengt also echte Tippfehler ab.
+ */
+export class HubspotInvalidEmailError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HubspotInvalidEmailError';
+  }
+}
+
 export function isHubspotConfigured(): boolean {
   return Boolean(process.env.HUBSPOT_PRIVATE_APP_TOKEN);
 }
@@ -282,13 +299,19 @@ export async function submitLeadToHubspot(
   // Upsert über die E-Mail: ein Interessent, der das Quiz ein zweites Mal
   // ausfüllt, soll denselben Kontakt aktualisieren statt eine Dublette zu
   // erzeugen. Das erspart auch die 409-Behandlung eines reinen Create.
-  const data = await hubspotRequest<{ results: { id: string }[] }>(
-    '/crm/v3/objects/contacts/batch/upsert',
-    {
+  let data: { results: { id: string }[] };
+  try {
+    data = await hubspotRequest('/crm/v3/objects/contacts/batch/upsert', {
       method: 'POST',
       body: { inputs: [{ idProperty: 'email', id: answers.email, properties }] },
+    });
+  } catch (err) {
+    const text = err instanceof Error ? err.message : String(err);
+    if (text.includes('INVALID_EMAIL')) {
+      throw new HubspotInvalidEmailError(text);
     }
-  );
+    throw err;
+  }
 
   const contactId = data.results?.[0]?.id;
   if (!contactId) {

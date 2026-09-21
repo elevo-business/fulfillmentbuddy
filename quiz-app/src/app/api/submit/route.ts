@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { submitLeadToMonday } from '@/lib/monday';
-import { submitLeadToHubspot, isHubspotConfigured } from '@/lib/hubspot';
+import { submitLeadToHubspot, isHubspotConfigured, HubspotInvalidEmailError } from '@/lib/hubspot';
 import type { LeadAttribution } from '@/lib/hubspot';
 import type { QuizAnswers } from '@/lib/scoring';
 
@@ -108,6 +108,21 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({ ok: true, score, itemId: contactId, crm: 'hubspot' });
     } catch (err) {
+      // Abgelehnte E-Mail ist kein Ausfall, sondern ein Tippfehler. Nicht in
+      // ein anderes CRM ausweichen — dort laege die Adresse zwar, waere aber
+      // unbrauchbar. Stattdessen nachfragen, solange der Interessent noch da
+      // ist: das rettet den Lead, ein 502 verliert ihn.
+      if (err instanceof HubspotInvalidEmailError) {
+        console.warn('Lead abgelehnt: ungueltige E-Mail', { email: body.email });
+        return NextResponse.json(
+          {
+            error:
+              'Diese E-Mail-Adresse konnten wir nicht bestätigen. Bitte prüf sie kurz auf einen Tippfehler.',
+            field: 'email',
+          },
+          { status: 400 }
+        );
+      }
       failures.push(`hubspot: ${err instanceof Error ? err.message : String(err)}`);
       console.error('hubspot submit failed', err);
     }
