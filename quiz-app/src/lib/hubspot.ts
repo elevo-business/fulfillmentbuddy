@@ -97,15 +97,33 @@ type PropertyMeta = {
 const PROPERTY_CACHE_TTL_MS = 5 * 60_000;
 let propertyCache: { at: number; props: Map<string, PropertyMeta> } | null = null;
 
-async function getContactProperties(): Promise<Map<string, PropertyMeta>> {
+/**
+ * Property-Schema des Portals holen — oder `null`, wenn das nicht geht.
+ *
+ * Der Abruf braucht den Scope `crm.schemas.contacts.read`. Fehlt der, war
+ * vorher der ganze Lead verloren, obwohl das blosse Anlegen eines Kontakts
+ * nur `crm.objects.contacts.write` braucht. Das Schema ist aber nur eine
+ * Optimierung: es erlaubt, optionale Custom Properties mitzuschicken. Faellt
+ * es aus, wird eben ohne sie geschrieben — statt gar nicht.
+ */
+async function getContactProperties(): Promise<Map<string, PropertyMeta> | null> {
   const now = Date.now();
   if (propertyCache && now - propertyCache.at < PROPERTY_CACHE_TTL_MS) {
     return propertyCache.props;
   }
 
-  const data = await hubspotRequest<{
-    results: { name: string; type: string; options?: { value: string }[] }[];
-  }>('/crm/v3/properties/contacts', { method: 'GET' });
+  let data: { results: { name: string; type: string; options?: { value: string }[] }[] };
+  try {
+    data = await hubspotRequest('/crm/v3/properties/contacts', { method: 'GET' });
+  } catch (err) {
+    console.warn(
+      'HubSpot-Property-Schema nicht abrufbar — Lead wird mit den Standardfeldern ' +
+        'angelegt. Fuer die optionalen fb_*-Properties fehlt vermutlich der Scope ' +
+        'crm.schemas.contacts.read.',
+      err
+    );
+    return null;
+  }
 
   const props = new Map<string, PropertyMeta>();
   for (const p of data.results) {
@@ -119,6 +137,23 @@ async function getContactProperties(): Promise<Map<string, PropertyMeta>> {
   propertyCache = { at: now, props };
   return props;
 }
+
+/**
+ * Properties, die es in jedem HubSpot-Portal gibt und die alle vom Typ Text
+ * sind — also ohne Options-Pruefung gefahrlos sendbar. Das ist der Rueckfall,
+ * wenn das Schema nicht gelesen werden kann. Bewusst ohne Auswahllisten
+ * (`lifecyclestage`, `hs_lead_status`): deren gueltige Optionen sind pro
+ * Portal konfigurierbar, ein falscher Wert kostet mit 400 den ganzen Lead.
+ */
+const ALWAYS_PRESENT_PROPERTIES = new Set([
+  'email',
+  'firstname',
+  'lastname',
+  'phone',
+  'company',
+  'website',
+  'message',
+]);
 
 // --- Lead-Zusammenfassung --------------------------------------------------
 
@@ -197,9 +232,16 @@ export async function submitLeadToHubspot(
   // Optionen sonst mit 400 ab und der Lead wäre verloren.
   const set = (name: string, value: string | number | undefined | null) => {
     if (value === undefined || value === null || value === '') return;
+    const str = String(value);
+
+    // Ohne Schema nur die Felder senden, die jedes Portal sicher kennt.
+    if (!schema) {
+      if (ALWAYS_PRESENT_PROPERTIES.has(name)) properties[name] = str;
+      return;
+    }
+
     const meta = schema.get(name);
     if (!meta) return;
-    const str = String(value);
     if (meta.options && !meta.options.has(str)) return;
     properties[name] = str;
   };
@@ -271,6 +313,11 @@ export async function enrichContactWithCosts(
   }
 ): Promise<void> {
   const schema = await getContactProperties();
+  // Die Rechnerwerte liegen ausschliesslich in Custom Properties. Ohne
+  // lesbares Schema laesst sich nicht pruefen, ob es sie gibt — dann lieber
+  // nichts schicken als den Nachtrag an einem 400 scheitern lassen.
+  if (!schema) return;
+
   const properties: Record<string, string> = {};
   const set = (name: string, value: number) => {
     if (!schema.has(name)) return;
