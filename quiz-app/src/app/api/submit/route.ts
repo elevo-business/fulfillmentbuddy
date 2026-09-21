@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { submitLeadToMonday } from '@/lib/monday';
+import { submitLeadToHubspot, isHubspotConfigured } from '@/lib/hubspot';
+import type { LeadAttribution } from '@/lib/hubspot';
 import type { QuizAnswers } from '@/lib/scoring';
 
 const REQUIRED_FIELDS: (keyof QuizAnswers)[] = [
@@ -83,14 +85,81 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  try {
-    const { score, itemId } = await submitLeadToMonday(body as QuizAnswers, { suspectedBot });
-    return NextResponse.json({ ok: true, score, itemId });
-  } catch (err) {
-    console.error('monday submit failed', err);
-    return NextResponse.json(
-      { error: 'Übermittlung fehlgeschlagen. Bitte später erneut versuchen.' },
-      { status: 502 }
-    );
+  const attribution = readAttribution(raw);
+
+  // CRM-Wechsel monday -> HubSpot.
+  //
+  // HubSpot ist das Ziel, monday bleibt waehrend der Umstellung als Notnagel
+  // stehen: solange MONDAY_API_KEY gesetzt ist, faengt es einen Ausfall der
+  // HubSpot-Seite auf. Ist der Wechsel durch, reicht es, die Variable in
+  // Coolify zu entfernen — dann faellt der Zweig von selbst weg.
+  //
+  // Was hier NICHT passieren darf: dem Nutzer Erfolg melden, ohne dass der
+  // Lead irgendwo liegt. Ein Lead-Event ohne Eintrag dahinter laesst Meta auf
+  // Phantom-Conversions optimieren. Deshalb wird nur `ok` gemeldet, wenn eine
+  // echte Datensatz-ID zurueckkam.
+  const failures: string[] = [];
+
+  if (isHubspotConfigured()) {
+    try {
+      const { score, contactId } = await submitLeadToHubspot(body as QuizAnswers, {
+        suspectedBot,
+        attribution,
+      });
+      return NextResponse.json({ ok: true, score, itemId: contactId, crm: 'hubspot' });
+    } catch (err) {
+      failures.push(`hubspot: ${err instanceof Error ? err.message : String(err)}`);
+      console.error('hubspot submit failed', err);
+    }
+  } else {
+    failures.push('hubspot: HUBSPOT_PRIVATE_APP_TOKEN nicht gesetzt');
   }
+
+  if (process.env.MONDAY_API_KEY) {
+    try {
+      const { score, itemId } = await submitLeadToMonday(body as QuizAnswers, { suspectedBot });
+      console.warn('Lead ueber monday-Fallback angelegt — HubSpot-Pfad pruefen', { itemId });
+      return NextResponse.json({ ok: true, score, itemId, crm: 'monday' });
+    } catch (err) {
+      failures.push(`monday: ${err instanceof Error ? err.message : String(err)}`);
+      console.error('monday submit failed', err);
+    }
+  }
+
+  // Beide Senken tot: den vollstaendigen Lead ins Log schreiben, damit er
+  // aus den Coolify-Logs rekonstruierbar ist, statt ersatzlos zu verschwinden.
+  console.error(
+    'LEAD NICHT GESPEICHERT — kein CRM erreichbar. Vollstaendiger Payload folgt.',
+    JSON.stringify({ lead: body, attribution, suspectedBot, failures })
+  );
+
+  return NextResponse.json(
+    { error: 'Übermittlung fehlgeschlagen. Bitte später erneut versuchen.' },
+    { status: 502 }
+  );
+}
+
+/**
+ * Liest die Herkunftsdaten aus dem Payload. Der Client schickt sie mit; fehlen
+ * sie (aelterer, noch ausgelieferter Client), bleibt das Feld leer — der Lead
+ * darf daran nicht scheitern.
+ */
+function readAttribution(raw: Record<string, unknown>): LeadAttribution {
+  const str = (v: unknown): string | undefined => {
+    if (typeof v !== 'string') return undefined;
+    const trimmed = v.trim();
+    if (!trimmed) return undefined;
+    // Deckel gegen aufgeblaehte Query-Strings.
+    return trimmed.slice(0, 500);
+  };
+  const src = (raw.attribution ?? {}) as Record<string, unknown>;
+  return {
+    utmSource: str(src.utmSource),
+    utmMedium: str(src.utmMedium),
+    utmCampaign: str(src.utmCampaign),
+    utmContent: str(src.utmContent),
+    utmTerm: str(src.utmTerm),
+    landingUrl: str(src.landingUrl),
+    referrer: str(src.referrer),
+  };
 }

@@ -13,7 +13,7 @@ gescheitert: eine reine Static-Site-Resource kann keinen Node-Server für
 | `/impressum` | Impressum | Statisches HTML aus `public/impressum.html` |
 | `/datenschutz` | Datenschutzerklärung | Statisches HTML aus `public/datenschutz.html` |
 | `/quiz1` | Landingpage + Fulfillment-Check (Rolle + 6 Fragen) | Echte React-Route (`src/app/quiz1/page.tsx`) |
-| `/api/submit` | Server-Route, nimmt Quiz-Antworten entgegen | `src/app/api/submit/route.ts`, ruft monday-API, gibt `itemId` zurück |
+| `/api/submit` | Server-Route, nimmt Quiz-Antworten entgegen | `src/app/api/submit/route.ts`, ruft HubSpot-API, gibt `itemId` + `crm` zurück |
 | `/api/enrich` | Trägt Rechnerwerte am bestehenden Lead nach | `src/app/api/enrich/route.ts` — **kein** zweites `create_item` |
 | `/api/verify/send` | Startet SMS-OTP-Verifizierung fürs Telefonfeld | `src/app/api/verify/send/route.ts`, ruft Twilio Verify |
 | `/api/verify/check` | Prüft eingegebenen SMS-Code | `src/app/api/verify/check/route.ts`, ruft Twilio Verify |
@@ -42,7 +42,7 @@ public/
 src/
   app/
     quiz1/page.tsx        Quiz-Einstiegsseite
-    api/submit/route.ts   Server-Route → monday CRM
+    api/submit/route.ts   Server-Route → HubSpot CRM (monday als Fallback)
     layout.tsx, globals.css   Layout & Styles für /quiz1
   components/LandingPage.tsx  Landingpage-Sections + A/B-Hero, umschliesst das Quiz
   components/Quiz.tsx         Check-Logik: Gate, 6 Fragen, Lead, Ergebnis
@@ -51,7 +51,9 @@ src/
     tracking.ts            Funnel-Events fuer den Meta-Pixel
     assessment.ts          Ergebnistexte für den Prospect
     scoring.ts             Lead-Scoring (0–100, additiv) + harte Ausschlussgründe
-    monday.ts               monday-API-Anbindung (robust, siehe unten)
+    hubspot.ts              HubSpot-Contacts-Anbindung (robust, siehe unten)
+    attribution.ts          UTM-Herkunft sichern (sessionStorage)
+    monday.ts               monday-API-Anbindung (Uebergangs-Fallback)
 ```
 
 ## Logo & Illustrationen
@@ -65,10 +67,17 @@ src/
 
 ## Environment-Variablen
 Siehe `.env.example`:
-- `MONDAY_API_KEY` — **muss in Coolify gesetzt sein** (Server-seitig, nie im
-  Client-Bundle). Personal-/API-Token aus monday.com (Profil → Admin → API).
-- `MONDAY_BOARD_ID` — Ziel-Board, Default ist bereits richtig gesetzt
-  (`5103645238`, Board "Fulfillmentbuddy Leads").
+- `HUBSPOT_PRIVATE_APP_TOKEN` — **muss in Coolify gesetzt sein.** Primaere
+  Lead-Senke. HubSpot → Einstellungen → Integrationen → Private Apps.
+  Scopes: `crm.objects.contacts.read`, `crm.objects.contacts.write`,
+  `crm.schemas.contacts.read`.
+- `HUBSPOT_API_BASE_URL` — normalerweise leer lassen. Nur setzen, wenn der
+  Standard-Endpunkt das Portal nicht erreicht (EU-Portale, Token
+  `pat-eu1-…`): dann `https://api-eu1.hubapi.com`.
+- `MONDAY_API_KEY` — **optional, Uebergangs-Fallback.** Wird nur noch
+  angesprochen, wenn der HubSpot-Aufruf fehlschlaegt. Ist der Wechsel durch,
+  Variable entfernen — dann faellt der Fallback-Zweig von selbst weg.
+- `MONDAY_BOARD_ID` — Ziel-Board des Fallbacks (`5103645238`).
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID` —
   nötig, solange der optionale SMS-Bestätigungs-Button im Formular steht.
   Telefon-Verifizierung ist **aktuell optional**: die Telefonnummer selbst
@@ -85,6 +94,52 @@ Siehe `.env.example`:
   **Compliance Profile** einreichen und genehmigen lassen (bzw. Account
   voll upgraden), sonst bleibt der Funnel für echten Traffic blockiert.
   Kosten: ca. 0,05–0,06 €/SMS in Deutschland.
+
+## CRM: HubSpot (Contacts API)
+
+Das Quiz postet den fertigen Lead server-seitig gegen die HubSpot Contacts
+API. Bewusst **kein HubSpot-Formular und kein Tracking-Code**: das Quiz
+bleibt unveraendert und es kommt keine weitere Cookie-/Consent-Baustelle
+dazu.
+
+Upsert laeuft ueber die E-Mail (`idProperty: email`) — wer das Quiz ein
+zweites Mal ausfuellt, aktualisiert denselben Kontakt statt eine Dublette zu
+erzeugen.
+
+**Ohne jede Einrichtung nutzbar.** HubSpot legt unbekannte Properties nicht
+automatisch an und quittiert sie mit 400 — ein einziges fehlendes Feld wuerde
+den ganzen Lead kosten. Deshalb fragt `src/lib/hubspot.ts` das
+Property-Schema des Portals ab (5 Min. gecacht) und sendet nur, was
+existiert; bei Auswahllisten zusaetzlich nur gueltige Optionen. Die
+vollstaendigen Antworten landen immer zusaetzlich als lesbarer Text in der
+Standard-Property `message`, es geht also nie etwas verloren.
+
+Optional koennen diese Custom Properties (Typ: Einzeiliger Text, `fb_score`
+als Zahl) im HubSpot-UI angelegt werden — sie fuellen sich ab dann von
+selbst, ohne Code-Aenderung:
+
+`fb_score`, `fb_status`, `fb_blockers`, `fb_intent`, `fb_role`, `fb_volume`,
+`fb_process`, `fb_time_spent`, `fb_challenge`, `fb_growth`, `fb_priority`,
+`fb_suspected_bot`, `fb_utm_source`, `fb_utm_medium`, `fb_utm_campaign`,
+`fb_utm_content`, `fb_utm_term`, `fb_landing_url`, `fb_referrer`
+
+Fuer den Paketkosten-Rechner zusaetzlich (Typ: Zahl): `fb_parcels_per_month`,
+`fb_cost_per_parcel`, `fb_labor_share_pct`, `fb_fte_equivalent`.
+
+### Herkunft / Attribution
+`src/lib/attribution.ts` sichert die UTM-Parameter beim ersten Seitenaufruf
+in `sessionStorage` und schickt sie beim Absenden mit. Ohne das endet die
+Meta-Auswertung beim Klick und das CRM beginnt beim Formular — ein
+Creative-Test laesst sich dann nicht bis zum qualifizierten Lead durchziehen.
+Ein spaeterer Aufruf ohne UTMs ueberschreibt einen bereits gesicherten Wert
+nicht.
+
+### Wenn beide Senken ausfallen
+`/api/submit` meldet nur `ok`, wenn eine echte Datensatz-ID zurueckkam — ein
+Lead-Event ohne Eintrag dahinter liesse Meta auf Phantom-Conversions
+optimieren. Faellt HubSpot **und** der monday-Fallback aus, wird der
+vollstaendige Payload ins Log geschrieben
+(`LEAD NICHT GESPEICHERT`) und ist aus den Coolify-Logs rekonstruierbar.
 
 ## Monday-Board-Setup (einmalig, manuell)
 Der verbundene monday-Account kann per API keine Spalten anlegen (fehlende

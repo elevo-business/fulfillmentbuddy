@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enrichLeadWithCosts } from '@/lib/monday';
+import { enrichContactWithCosts, isHubspotConfigured } from '@/lib/hubspot';
 
 /**
  * Traegt die Werte des optionalen Paketkosten-Rechners an einem bereits
@@ -10,6 +11,7 @@ import { enrichLeadWithCosts } from '@/lib/monday';
 export async function POST(req: NextRequest) {
   let body: {
     itemId?: string;
+    crm?: string;
     parcelsPerMonth?: number;
     costPerParcel?: number;
     laborSharePct?: number;
@@ -21,7 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ungültiger Request-Body.' }, { status: 400 });
   }
 
-  const { itemId, parcelsPerMonth, costPerParcel, laborSharePct, fteEquivalent } = body;
+  const { itemId, crm, parcelsPerMonth, costPerParcel, laborSharePct, fteEquivalent } = body;
   if (!itemId || !/^\d+$/.test(itemId)) {
     return NextResponse.json({ error: 'Ungültige itemId.' }, { status: 400 });
   }
@@ -35,16 +37,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ungültige Rechnerwerte.' }, { status: 400 });
   }
 
+  // In dieselbe Datenbank nachtragen, die den Lead aufgenommen hat. HubSpot-
+  // Kontakt-IDs und monday-Item-IDs sind beide rein numerisch, an der ID
+  // allein laesst sich das also nicht erkennen — deshalb schickt der Client
+  // mit, welches CRM es war. Fehlt die Angabe (aelterer, noch ausgelieferter
+  // Client), gilt die frueher einzige Senke: monday.
+  const costs = { parcelsPerMonth, costPerParcel, laborSharePct, fteEquivalent };
+  const target = crm === 'hubspot' || crm === 'monday' ? crm : 'monday';
+
   try {
-    await enrichLeadWithCosts(itemId, {
-      parcelsPerMonth,
-      costPerParcel,
-      laborSharePct,
-      fteEquivalent,
-    });
+    if (target === 'hubspot') {
+      if (!isHubspotConfigured()) {
+        return NextResponse.json({ error: 'HubSpot nicht konfiguriert.' }, { status: 502 });
+      }
+      await enrichContactWithCosts(itemId, costs);
+    } else {
+      await enrichLeadWithCosts(itemId, costs);
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('monday enrich failed', err);
+    console.error(`${target} enrich failed`, err);
     return NextResponse.json({ error: 'Nachtrag fehlgeschlagen.' }, { status: 502 });
   }
 }

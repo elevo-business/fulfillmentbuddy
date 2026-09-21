@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { buildAssessment } from '@/lib/assessment';
+import { captureAttribution, readAttribution } from '@/lib/attribution';
 import { track } from '@/lib/tracking';
 import {
   ROLE_OPTIONS,
@@ -128,15 +129,25 @@ export default function Quiz() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // Herkunft sofort beim Aufruf sichern, nicht erst beim Absenden: bis der
+  // Nutzer das Quiz durch hat, kann die URL laengst ohne Parameter dastehen.
+  useEffect(() => {
+    captureAttribution();
+  }, []);
+
   // Optionaler Paketkosten-Rechner: nach dem Ergebnis, nicht davor. Er ist
   // nicht mehr die Haupt-Conversion, aber weiterhin das stärkste
   // Gesprächsargument für den Anbieter, der den Lead bekommt.
   const [calcRaw, setCalcRaw] = useState<Record<keyof CostInputs, string>>({ ...EMPTY_COST_INPUTS });
   const [cost, setCost] = useState<CostResult | null>(null);
   const [calcSending, setCalcSending] = useState(false);
-  /** monday-Item des bereits angelegten Leads — der Rechner reichert es
+  /** CRM-Datensatz des bereits angelegten Leads (HubSpot-Kontakt, waehrend
+   *  der Umstellung ggf. noch ein monday-Item) — der Rechner reichert ihn
    *  nach, statt einen zweiten Lead anzulegen. */
   const [itemId, setItemId] = useState<string | null>(null);
+  /** Welches CRM den Lead aufgenommen hat — der Nachtrag muss in dieselbe
+   *  Datenbank, sonst laeuft eine HubSpot-ID gegen ein monday-Board. */
+  const [crm, setCrm] = useState<string | null>(null);
 
   const totalQuestions = QUESTIONS.length;
   const answeredCount = phase === 'contact' ? totalQuestions : qIndex;
@@ -207,7 +218,7 @@ export default function Quiz() {
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(answers),
+        body: JSON.stringify({ ...answers, attribution: readAttribution() }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Unbekannter Fehler');
@@ -219,6 +230,7 @@ export default function Quiz() {
         throw new Error('Deine Anfrage konnte nicht gespeichert werden. Bitte versuch es gleich nochmal.');
       }
       setItemId(data.itemId);
+      setCrm(typeof data.crm === 'string' ? data.crm : null);
       // Meta Lead-Event erst NACH erfolgreichem Absenden feuern — sonst
       // zählt jeder Versuch, nicht nur die eingegangene Anfrage.
       track('Lead');
@@ -263,6 +275,7 @@ export default function Quiz() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         itemId,
+        crm,
         parcelsPerMonth: inputs.parcels,
         costPerParcel: result.costPerParcel,
         laborSharePct: result.laborShare * 100,
