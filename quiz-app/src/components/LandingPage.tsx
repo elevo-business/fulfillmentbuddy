@@ -5,20 +5,32 @@ import Quiz from './Quiz';
 import { track } from '@/lib/tracking';
 
 /**
- * Zwei Hero-Varianten für den A/B-Test (Brief §21). Gesteuert über ?v=b
- * in der Ziel-URL der Anzeige, damit pro Creative eine Variante getestet
- * werden kann, ohne zwei Seiten zu pflegen. Default ist A (Pain).
+ * Aufbau: Headline, dann sofort das Quiz. Kein Hero mit CTA, der erst nach
+ * unten scrollt.
+ *
+ * Grund steht in den Pixel-Daten: Von den Landingpage-Aufrufen haben nur
+ * rund ein Drittel den CTA ueberhaupt geklickt — das war der groesste
+ * Einzelverlust im ganzen Funnel. Wer dagegen anfaengt, macht zu 77 %
+ * fertig und beantwortet im Schnitt 5,45 von 6 Fragen. Das Quiz ist der
+ * staerkste Teil der Seite und steht deshalb an erster Stelle. Alles
+ * andere (Pain, Einwaende, Modell) rutscht darunter, fuer die, die
+ * scrollen wollen.
+ */
+
+/**
+ * Zwei Headline-Varianten, gesteuert ueber ?v=b in der Ziel-URL der
+ * Anzeige. Beide benennen das Problem und nicht die Leistung, nennen den
+ * Aufwand (6 Fragen, 60 Sekunden) und nehmen die Hemmschwelle vorweg
+ * (Ergebnis ohne E-Mail, kein Termin). Default ist A.
  */
 const HERO_VARIANTS = {
   a: {
-    headline: 'Packst du noch deine Pakete selbst?',
-    sub: 'Finde in 60 Sekunden heraus, ob sich das Fulfillment deines Online-Shops bereits sinnvoll auslagern lässt.',
-    cta: 'Fulfillment-Potenzial prüfen →',
+    headline: 'Was kostet dich dein Versand wirklich?',
+    sub: 'Die meisten Shops rechnen nur das Porto. 6 Fragen, 60 Sekunden — danach kennst du deine echten Kosten pro Paket und weißt, ob sich Auslagern für dich schon rechnet.',
   },
   b: {
-    headline: 'Dein Shop soll wachsen. Nicht dein Lager.',
-    sub: 'Finde heraus, ob dein aktuelles Fulfillment dein nächstes Wachstums-Limit ist.',
-    cta: 'Wachstums-Check starten →',
+    headline: 'Ab wann lohnt sich Fulfillment für deinen Shop?',
+    sub: '6 Fragen, 60 Sekunden. Danach hast du eine klare Einschätzung — und deine echten Kosten pro Paket. Ohne Termin, ohne Verkaufsgespräch.',
   },
 } as const;
 
@@ -39,13 +51,6 @@ const PAINS = [
     title: 'Skalierung',
     body: 'Mehr Umsatz sollte nicht automatisch mehr operative Arbeit bedeuten. Genau das passiert aber inhouse fast immer.',
   },
-];
-
-const CHECK_POINTS = [
-  { n: '01', title: 'Bestellvolumen', body: 'Dein tatsächliches Versandvolumen pro Monat.' },
-  { n: '02', title: 'Aktueller Prozess', body: 'Wie dein Fulfillment heute organisiert ist.' },
-  { n: '03', title: 'Aufwand', body: 'Wie viel Zeit und Personal dafür gebunden werden.' },
-  { n: '04', title: 'Wachstum', body: 'Wie stark dein Shop in Zukunft skalieren soll.' },
 ];
 
 const OBJECTIONS = [
@@ -73,6 +78,7 @@ export default function LandingPage() {
 
   const hero = HERO_VARIANTS[variant];
 
+  /** Nur noch der CTA am Seitenende — oben steht das Quiz bereits. */
   function scrollToCheck() {
     track('CheckCtaClicked', { variant });
     document.getElementById('check')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -80,35 +86,18 @@ export default function LandingPage() {
 
   return (
     <main className="lp">
-      {/* ---------- HERO ---------- */}
-      {/* Bild-Slot: Ein eigenes Creative als CSS-Hintergrund auf .lp-hero
-          legen (public/assets/img/hero.webp, dann background-image in
-          globals.css setzen). Bewusst kein Stockfoto im Repo. */}
-      <section className="lp-hero">
-        <div className="lp-inner">
+      {/* ---------- HEADLINE + QUIZ ---------- */}
+      <section className="lp-hero lp-hero--quiz" id="check">
+        <div className="lp-inner lp-inner--narrow">
           <p className="eyebrow">Fulfillmentbuddy</p>
           <h1>{hero.headline}</h1>
           <p className="lead">{hero.sub}</p>
-          <button className="btn-cta" onClick={scrollToCheck} type="button">
-            {hero.cta}
-          </button>
-          <p className="microcopy">Kostenlos · 60 Sekunden · Unverbindlich</p>
-        </div>
-      </section>
 
-      {/* ---------- QUALIFIZIERUNG ---------- */}
-      <section className="lp-section">
-        <div className="lp-inner lp-inner--narrow">
-          <h2>Für wen ist der Check gedacht?</h2>
-          <p className="lead">Dein Shop …</p>
-          <ul className="tick-list">
-            <li>verschickt bereits regelmäßig Bestellungen</li>
-            <li>wächst oder soll weiter wachsen</li>
-            <li>lagert und versendet aktuell selbst</li>
-            <li>möchte operative Arbeit reduzieren</li>
-            <li>möchte sich stärker auf Wachstum konzentrieren</li>
-          </ul>
-          <p className="statement-sm">Wenn du dich hier wiedererkennst, ist der Check für dich.</p>
+          <Quiz />
+
+          <p className="microcopy microcopy--hero">
+            Ergebnis sofort — ohne E-Mail-Adresse. Kein Termin, kein Verkaufsgespräch.
+          </p>
         </div>
       </section>
 
@@ -132,31 +121,19 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ---------- CHECK-POSITIONIERUNG ---------- */}
+      {/* ---------- QUALIFIZIERUNG ---------- */}
       <section className="lp-section">
-        <div className="lp-inner">
-          <h2>Ist dein Shop bereit für ausgelagertes Fulfillment?</h2>
-          <p className="lead">
-            Beantworte 6 kurze Fragen zu deinem aktuellen Fulfillment. Danach erhältst du
-            eine erste Einschätzung, ob Outsourcing für deinen Shop bereits sinnvoll sein
-            könnte.
-          </p>
-          <div className="card-grid">
-            {CHECK_POINTS.map((c) => (
-              <div className="step-card" key={c.n}>
-                <span className="step-num">{c.n}</span>
-                <h3>{c.title}</h3>
-                <p>{c.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ---------- QUIZ ---------- */}
-      <section className="lp-section lp-section--check" id="check">
         <div className="lp-inner lp-inner--narrow">
-          <Quiz />
+          <h2>Für wen der Check gedacht ist</h2>
+          <p className="lead">Dein Shop …</p>
+          <ul className="tick-list">
+            <li>verschickt bereits regelmäßig Bestellungen</li>
+            <li>wächst oder soll weiter wachsen</li>
+            <li>lagert und versendet aktuell selbst</li>
+            <li>möchte operative Arbeit reduzieren</li>
+            <li>möchte sich stärker auf Wachstum konzentrieren</li>
+          </ul>
+          <p className="statement-sm">Wenn du dich hier wiedererkennst, ist der Check für dich.</p>
         </div>
       </section>
 
@@ -222,12 +199,11 @@ export default function LandingPage() {
             <span className="accent">Wir finden dein Fulfillment.</span>
           </h2>
           <p className="lead">
-            Finde jetzt heraus, ob Outsourcing für deinen Shop sinnvoll ist.
+            6 Fragen, 60 Sekunden — und du weißt, woran du bist.
           </p>
           <button className="btn-cta" onClick={scrollToCheck} type="button">
-            {hero.cta}
+            Zum Check →
           </button>
-          <p className="microcopy">6 Fragen · ca. 60 Sekunden · kostenlos</p>
         </div>
       </section>
 

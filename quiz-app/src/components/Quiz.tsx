@@ -11,7 +11,6 @@ import {
   TIME_OPTIONS,
   CHALLENGE_OPTIONS,
   GROWTH_OPTIONS,
-  PRIORITY_OPTIONS,
 } from '@/lib/scoring';
 import {
   calculateCosts,
@@ -56,7 +55,7 @@ const EMPTY_ANSWERS: Answers = {
   contactReference: '',
 };
 
-type QuestionKey = 'volume' | 'process' | 'timeSpent' | 'challenge' | 'growth' | 'priority';
+type QuestionKey = 'volume' | 'process' | 'timeSpent' | 'challenge' | 'growth' | 'role';
 
 type Question = {
   key: QuestionKey;
@@ -64,13 +63,26 @@ type Question = {
   options: string[];
 };
 
+/**
+ * Reihenfolge ist bewusst gewaehlt.
+ *
+ * Die Rollenfrage stand frueher als eigenes Gate VOR dem Quiz. Dort sind
+ * laut Pixel 25 % der Leute verschwunden, die den CTA schon geklickt
+ * hatten: Die erste Interaktion war ein Filter, kein Nutzen. Jetzt steht
+ * sie als letzte Frage — wer fuenf Fragen beantwortet hat, beantwortet
+ * auch die sechste.
+ *
+ * Herausgefallen ist "Was waere dir am wichtigsten?". Sie floss weder in
+ * den Score noch in die Einschaetzung ein und kostete nur einen Schritt.
+ * So bleibt es bei den sechs Fragen, die die Anzeigen versprechen.
+ */
 const QUESTIONS: Question[] = [
   { key: 'volume', question: 'Wie viele Bestellungen verschickst du aktuell pro Monat?', options: VOLUME_OPTIONS },
   { key: 'process', question: 'Wie wird dein Fulfillment aktuell abgewickelt?', options: PROCESS_OPTIONS },
   { key: 'timeSpent', question: 'Wie viel Zeit verbringt dein Team ungefähr mit Fulfillment?', options: TIME_OPTIONS },
   { key: 'challenge', question: 'Was ist aktuell deine größte Herausforderung?', options: CHALLENGE_OPTIONS },
   { key: 'growth', question: 'Wie stark soll dein Shop in den nächsten 12 Monaten wachsen?', options: GROWTH_OPTIONS },
-  { key: 'priority', question: 'Was wäre dir beim Fulfillment am wichtigsten?', options: PRIORITY_OPTIONS },
+  { key: 'role', question: 'Welche Rolle hast du im Unternehmen?', options: ROLE_OPTIONS },
 ];
 
 type CalcField = {
@@ -114,14 +126,18 @@ const CALC_FIELDS: CalcField[] = [
 ];
 
 /**
- * Der Rollen-Schritt zählt bewusst nicht als "Frage" in der Anzeige — er
- * ist das Eingangs-Gate, nicht Teil des Checks. Anzeige bleibt dadurch
- * bei den im Ad versprochenen 6 Fragen.
+ * Reihenfolge der Phasen: Das Ergebnis kommt VOR der Kontaktabfrage.
+ *
+ * Vorher lag es dahinter. Laut Pixel haben 41 Leute alle sechs Fragen
+ * beantwortet und nur 11 das Formular abgeschickt — und in diesen 11
+ * stecken noch eigene Testlaeufe. Wer sechs Antworten gibt, hat seine
+ * Einschaetzung verdient; die Kontaktdaten fragen wir danach und fuer
+ * etwas anderes: den Abgleich mit Anbietern.
  */
-type Phase = 'gate' | 'notFit' | 'questions' | 'contact' | 'result' | 'calc' | 'calcResult';
+type Phase = 'questions' | 'result' | 'contact' | 'confirmed';
 
 export default function Quiz() {
-  const [phase, setPhase] = useState<Phase>('gate');
+  const [phase, setPhase] = useState<Phase>('questions');
   const [qIndex, setQIndex] = useState(0);
   const [answers, setAnswers] = useState<Answers>(EMPTY_ANSWERS);
   const [started, setStarted] = useState(false);
@@ -140,6 +156,9 @@ export default function Quiz() {
   // Gesprächsargument für den Anbieter, der den Lead bekommt.
   const [calcRaw, setCalcRaw] = useState<Record<keyof CostInputs, string>>({ ...EMPTY_COST_INPUTS });
   const [cost, setCost] = useState<CostResult | null>(null);
+  /** Pakete/Monat aus den Rechnereingaben — steht nicht im Ergebnisobjekt. */
+  const [costParcels, setCostParcels] = useState<number | null>(null);
+  const [calcOpen, setCalcOpen] = useState(false);
   const [calcSending, setCalcSending] = useState(false);
   /** CRM-Datensatz des bereits angelegten Leads (HubSpot-Kontakt, waehrend
    *  der Umstellung ggf. noch ein monday-Item) — der Rechner reichert ihn
@@ -150,38 +169,31 @@ export default function Quiz() {
   const [crm, setCrm] = useState<string | null>(null);
 
   const totalQuestions = QUESTIONS.length;
-  const answeredCount = phase === 'contact' ? totalQuestions : qIndex;
   const progressPct =
-    phase === 'result' || phase === 'calc' || phase === 'calcResult'
-      ? 100
-      : Math.round((answeredCount / (totalQuestions + 1)) * 100);
+    phase === 'questions' ? Math.round((qIndex / totalQuestions) * 100) : 100;
+
+  /** "Andere" ist kein Shop-Betreiber — Einschaetzung ja, Vermittlung nein. */
+  const notFit = answers.role === 'Andere';
 
   function updateField(field: keyof Answers, value: string) {
     setAnswers((prev) => ({ ...prev, [field]: value }));
   }
 
-  function selectRole(value: string) {
-    updateField('role', value);
-    if (value === 'Andere') {
-      setTimeout(() => setPhase('notFit'), 160);
-      return;
-    }
+  function selectAnswer(key: QuestionKey, value: string) {
+    updateField(key, value);
+    // QuizStart feuert jetzt bei der ersten beantworteten Frage. Frueher
+    // haing es an der Rollenauswahl, die es als Schritt nicht mehr gibt.
     if (!started) {
       track('QuizStart');
       setStarted(true);
     }
-    setTimeout(() => setPhase('questions'), 160);
-  }
-
-  function selectAnswer(key: QuestionKey, value: string) {
-    updateField(key, value);
     track('QuizQuestionAnswered', { question: key, position: qIndex + 1 });
     setTimeout(() => {
       if (qIndex + 1 < QUESTIONS.length) {
         setQIndex((i) => i + 1);
       } else {
         track('QuizComplete');
-        setPhase('contact');
+        setPhase('result');
       }
     }, 160);
   }
@@ -190,11 +202,9 @@ export default function Quiz() {
     setSubmitError(null);
     setFormErrors({});
     if (phase === 'contact') {
-      setPhase('questions');
-      setQIndex(QUESTIONS.length - 1);
-    } else if (phase === 'questions') {
-      if (qIndex > 0) setQIndex((i) => i - 1);
-      else setPhase('gate');
+      setPhase('result');
+    } else if (phase === 'questions' && qIndex > 0) {
+      setQIndex((i) => i - 1);
     }
   }
 
@@ -205,7 +215,11 @@ export default function Quiz() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email)) {
       errors.email = 'Bitte gültige E-Mail-Adresse angeben.';
     }
-    if (!answers.phone.trim()) errors.phone = 'Bitte Telefonnummer angeben.';
+    // Telefon ist bewusst optional. Vier Pflichtfelder am Ende eines
+    // B2B-Funnels sind eines zu viel, und die Nummer ist erfahrungsgemaess
+    // das Feld, an dem abgebrochen wird. Wer sie freiwillig hinterlaesst,
+    // ist der wertvollere Lead — erzwingen macht ihn nicht besser.
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -234,7 +248,13 @@ export default function Quiz() {
       // Meta Lead-Event erst NACH erfolgreichem Absenden feuern — sonst
       // zählt jeder Versuch, nicht nur die eingegangene Anfrage.
       track('Lead');
-      setPhase('result');
+      setPhase('confirmed');
+      // Der Rechner laeuft jetzt VOR der Kontaktabfrage. Wer ihn schon
+      // benutzt hat, hat Zahlen, die zu diesem Zeitpunkt noch an keinem
+      // CRM-Datensatz haengen — jetzt nachreichen.
+      if (cost && costParcels !== null) {
+        enrichWithCosts(data.itemId, data.crm ?? null, cost, costParcels);
+      }
     } catch (err) {
       setSubmitError(
         err instanceof Error
@@ -244,6 +264,37 @@ export default function Quiz() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  /**
+   * Traegt die Rechnerwerte an einem bereits angelegten Lead nach.
+   * Schlaegt es fehl, ist der Lead trotzdem im CRM — deshalb nur loggen.
+   */
+  function enrichWithCosts(
+    targetId: string,
+    targetCrm: string | null,
+    result: CostResult,
+    parcels: number
+  ) {
+    setCalcSending(true);
+    fetch('/api/enrich', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        itemId: targetId,
+        crm: targetCrm,
+        parcelsPerMonth: parcels,
+        costPerParcel: result.costPerParcel,
+        laborSharePct: result.laborShare * 100,
+        fteEquivalent: result.fteEquivalent,
+      }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        track('CalculatorCompleted');
+      })
+      .catch((err) => console.error('Nachtrag der Rechnerwerte fehlgeschlagen', err))
+      .finally(() => setCalcSending(false));
   }
 
   function submitCalc() {
@@ -264,34 +315,15 @@ export default function Quiz() {
     const inputs = parsed as CostInputs;
     const result = calculateCosts(inputs);
     setCost(result);
-    setPhase('calcResult');
+    setCostParcels(inputs.parcels);
 
-    // Die Kostenwerte am bereits angelegten Lead nachreichen. Schlägt das
-    // fehl, ist der Lead trotzdem im CRM — deshalb nur still loggen.
-    if (!itemId) return;
-    setCalcSending(true);
-    fetch('/api/enrich', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        itemId,
-        crm,
-        parcelsPerMonth: inputs.parcels,
-        costPerParcel: result.costPerParcel,
-        laborSharePct: result.laborShare * 100,
-        fteEquivalent: result.fteEquivalent,
-      }),
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error(String(r.status));
-        track('CalculatorCompleted');
-      })
-      .catch((err) => console.error('Nachtrag der Rechnerwerte fehlgeschlagen', err))
-      .finally(() => setCalcSending(false));
+    // Der Rechner ist jetzt ohne Kontaktdaten nutzbar. Existiert noch kein
+    // CRM-Datensatz, werden die Werte beim spaeteren Absenden nachgereicht.
+    if (itemId) enrichWithCosts(itemId, crm, result, inputs.parcels);
   }
 
-  // ---------- Ergebnis (nach dem Lead) ----------
-  if (phase === 'result' || phase === 'calc' || phase === 'calcResult') {
+  // ---------- Ergebnis (jetzt VOR der Kontaktabfrage) ----------
+  if (phase === 'result' || phase === 'confirmed') {
     const a = buildAssessment({
       role: answers.role,
       volume: answers.volume,
@@ -341,7 +373,9 @@ export default function Quiz() {
           <p>{a.nextStep}</p>
         </div>
 
-        {phase === 'result' && (
+        {/* Rechner: ohne Kontaktdaten nutzbar. Er ist der zweite Teil des
+            Werts, den der Nutzer fuer seine sechs Antworten bekommt. */}
+        {!calcOpen && !cost && (
           <div className="result-block result-block--accent">
             <h3>Optional: eure Ist-Kosten pro Paket</h3>
             <p>
@@ -349,13 +383,13 @@ export default function Quiz() {
               heute wirklich kostet — inklusive der Stunden, die in den Gehältern
               stecken. Das ist die ehrlichste Vergleichsgrundlage gegen jedes Angebot.
             </p>
-            <button className="btn-primary" onClick={() => setPhase('calc')} type="button">
+            <button className="btn-primary" onClick={() => setCalcOpen(true)} type="button">
               Paketkosten berechnen →
             </button>
           </div>
         )}
 
-        {phase === 'calc' && (
+        {calcOpen && !cost && (
           <div className="result-block result-block--accent">
             <h3>Eure Ist-Kosten pro Paket</h3>
             <p className="field-hint">
@@ -372,7 +406,7 @@ export default function Quiz() {
                     type="text"
                     inputMode="decimal"
                     value={calcRaw[f.key]}
-                    onChange={(e) => setCalcRaw((p) => ({ ...p, [f.key]: e.target.value }))}
+                    onChange={(e) => setCalcRaw((prev) => ({ ...prev, [f.key]: e.target.value }))}
                   />
                   <span className="calc-suffix">{f.suffix}</span>
                 </div>
@@ -385,7 +419,7 @@ export default function Quiz() {
           </div>
         )}
 
-        {phase === 'calcResult' && cost && (
+        {cost && (
           <div className="result-block result-block--accent">
             <h3>Eure Ist-Kosten pro Paket</h3>
             <div className="cost-headline">
@@ -424,62 +458,54 @@ export default function Quiz() {
           </div>
         )}
 
-        <div className="result-followup">
-          <p>
-            <strong>Wie es jetzt weitergeht{firstName ? `, ${firstName}` : ''}:</strong>{' '}
-            Wir gleichen die Angaben zu {answers.company} mit Fulfillment-Anbietern ab,
-            die zu eurem Volumen, eurer Warenart und eurem Zeitrahmen passen. Passt es,
-            meldet sich der Anbieter direkt bei euch. {a.followUp}
-          </p>
-        </div>
+        {/* Erst jetzt die Gegenleistung — und fuer etwas anderes als das
+            Ergebnis, das der Nutzer bereits hat. */}
+        {phase === 'result' && !notFit && (
+          <div className="result-block result-block--cta">
+            <h3>Sollen wir dir passende Anbieter heraussuchen?</h3>
+            <p>
+              Wir gleichen deine Angaben mit Fulfillment-Anbietern ab, die zu deinem
+              Volumen, deiner Warenart und deinem Zeitrahmen passen. Passt keiner,
+              meldet sich auch keiner.
+            </p>
+            <button className="btn-primary" onClick={() => setPhase('contact')} type="button">
+              Anbieter abgleichen →
+            </button>
+            <p className="microcopy">Kostenlos · unverbindlich · kein Termin nötig</p>
+          </div>
+        )}
+
+        {phase === 'result' && notFit && (
+          <div className="result-block">
+            <h3>Die Vermittlung ist für Shop-Betreiber gemacht</h3>
+            <p>
+              Deine Einschätzung steht oben und gehört dir. Die Anbieter-Vermittlung
+              richtet sich an Inhaber und Betriebsverantwortliche eines Online-Shops
+              mit eigenem Versand — deshalb bieten wir sie dir hier nicht an.
+            </p>
+          </div>
+        )}
+
+        {phase === 'confirmed' && (
+          <div className="result-followup">
+            <p>
+              <strong>Wie es jetzt weitergeht{firstName ? `, ${firstName}` : ''}:</strong>{' '}
+              Wir gleichen die Angaben zu {answers.company} mit Fulfillment-Anbietern ab,
+              die zu eurem Volumen, eurer Warenart und eurem Zeitrahmen passen. Passt es,
+              meldet sich der Anbieter direkt bei euch. {a.followUp}
+            </p>
+          </div>
+        )}
       </div>
     );
   }
 
-  // ---------- Nicht-Zielgruppe ----------
-  if (phase === 'notFit') {
-    return (
-      <div className="quiz-card">
-        <p className="step-label">Kurz gecheckt</p>
-        <h2>Der Check ist für Shop-Betreiber gemacht</h2>
-        <p>
-          Der Fulfillment-Check und die Anbieter-Vermittlung richten sich an Inhaber und
-          Betriebsverantwortliche eines Online-Shops mit eigenem Versand. Das scheint bei
-          dir aktuell nicht zu passen — schau gerne auf <a href="/">fulfillmentbuddy.de</a>{' '}
-          vorbei, falls sich das ändert.
-        </p>
-        <button className="btn-ghost" onClick={() => setPhase('gate')} type="button">
-          Zurück
-        </button>
-      </div>
-    );
-  }
-
-  // ---------- Gate + Fragen + Kontakt ----------
+  // ---------- Fragen + Kontakt ----------
   return (
     <div className="quiz-card">
       <div className="progress-track">
         <div className="progress-fill" style={{ width: `${progressPct}%` }} />
       </div>
-
-      {phase === 'gate' && (
-        <div>
-          <p className="step-label">Fulfillment-Check</p>
-          <h2>Welche Rolle hast du im Unternehmen?</h2>
-          <div className="options">
-            {ROLE_OPTIONS.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                className={`option-btn${answers.role === opt ? ' selected' : ''}`}
-                onClick={() => selectRole(opt)}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {phase === 'questions' && (
         <div>
@@ -499,22 +525,24 @@ export default function Quiz() {
               </button>
             ))}
           </div>
-          <div className="nav-row">
-            <button className="btn-ghost" onClick={goBack} type="button">
-              Zurück
-            </button>
-            <span />
-          </div>
+          {qIndex > 0 && (
+            <div className="nav-row">
+              <button className="btn-ghost" onClick={goBack} type="button">
+                Zurück
+              </button>
+              <span />
+            </div>
+          )}
         </div>
       )}
 
       {phase === 'contact' && (
         <div>
-          <p className="step-label">Letzter Schritt</p>
-          <h2>Deine Fulfillment-Einschätzung ist bereit.</h2>
+          <p className="step-label">Anbieter-Abgleich</p>
+          <h2>Wohin dürfen wir die passenden Anbieter schicken?</h2>
           <p>
-            Wir haben genug Informationen, um einzuschätzen, ob sich ausgelagertes
-            Fulfillment für deinen Shop bereits lohnen könnte.
+            Deine Einschätzung hast du bereits. Diese Angaben brauchen wir nur, um dich
+            mit Anbietern abzugleichen, die zu deinem Volumen und deiner Warenart passen.
           </p>
 
           <div className="field">
@@ -552,7 +580,9 @@ export default function Quiz() {
           </div>
 
           <div className="field">
-            <label htmlFor="phone">Telefon</label>
+            <label htmlFor="phone">
+              Telefon <span className="optional-label">(optional)</span>
+            </label>
             <input
               id="phone"
               type="tel"
@@ -601,12 +631,10 @@ export default function Quiz() {
           {/* Kein Datenschutz-Hinweis ist hier keine Option: die Nummer geht
               an einen Anbieter, der anruft — Telefonwerbung ohne vorherige
               Einwilligung ist nach § 7 UWG abmahnfähig, und die Offenlegung
-              bei Weitergabe an Dritte verlangt Art. 13 DSGVO. Kurz halten,
-              aber nicht weglassen: Nutzen zuerst, "ein Anbieter" statt
-              "passende Anbieter" im Plural (weniger nach Massenverteilung). */}
+              bei Weitergabe an Dritte verlangt Art. 13 DSGVO. */}
           <p className="privacy-note">
-            Du bekommst deine Einschätzung sofort. Passt Auslagern zu deinem Shop,
-            verbinden wir dich mit einem passenden Anbieter.{' '}
+            Passt Auslagern zu deinem Shop, verbinden wir dich mit einem passenden
+            Anbieter.{' '}
             <a href="/datenschutz" target="_blank" rel="noopener noreferrer">
               Datenschutz
             </a>
@@ -618,7 +646,7 @@ export default function Quiz() {
               Zurück
             </button>
             <button className="btn-primary" onClick={handleSubmit} disabled={submitting} type="button">
-              {submitting ? 'Wird gesendet …' : 'Meine Einschätzung erhalten →'}
+              {submitting ? 'Wird gesendet …' : 'Anbieter abgleichen →'}
             </button>
           </div>
           <p className="microcopy">Kostenlos · unverbindlich · kein Spam</p>

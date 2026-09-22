@@ -45,7 +45,7 @@ src/
     api/submit/route.ts   Server-Route → HubSpot CRM (monday als Fallback)
     layout.tsx, globals.css   Layout & Styles für /quiz1
   components/LandingPage.tsx  Landingpage-Sections + A/B-Hero, umschliesst das Quiz
-  components/Quiz.tsx         Check-Logik: Gate, 6 Fragen, Lead, Ergebnis
+  components/Quiz.tsx         Check-Logik: 6 Fragen, Ergebnis, Kontakt
   lib/
     costCalc.ts            Paketkosten-Rechner (reine Arithmetik, keine Benchmarks)
     tracking.ts            Funnel-Events fuer den Meta-Pixel
@@ -183,22 +183,42 @@ Laufzeit ab).
 
 ## Funnel-Aufbau (`/quiz1`)
 
-Die Route ist eine vollstaendige Direct-Response-Landingpage, kein nacktes
-Quiz mehr: Hero, Selbstqualifizierung, Pain-Section, Check-Erklaerung, der
-Check selbst, Einwandbehandlung, Transparenz-Section, Final-CTA.
+**Headline, dann sofort das Quiz.** Darunter Pain-Section,
+Selbstqualifizierung, Einwandbehandlung, Transparenz-Section, Final-CTA.
 
 **Reihenfolge im Check** (`Phase` in `Quiz.tsx`):
 
-1. **Gate** — Rolle im Unternehmen. Zaehlt bewusst nicht als "Frage",
-   damit die im Ad versprochenen 6 Fragen stimmen. Wer "Andere" waehlt,
-   landet auf einer Hinweisseite statt im Check.
-2. bis 7. **Sechs Fragen** — Volumen, aktueller Prozess, Zeitaufwand,
-   Herausforderung, Wachstum, wichtigstes Kriterium.
-8. **Kontakt** — Vorname, Firma, E-Mail, Telefon (Pflicht), Shoplink
-   (optional), SMS-Bestaetigung (optional).
-9. **Ergebnis** — dynamische Einschaetzung mit Ampel aus `assessment.ts`.
-10. **Optional: Paketkosten-Rechner** — nach dem Ergebnis, nicht davor.
-    Reichert den bestehenden Lead ueber `/api/enrich` an.
+1. bis 6. **Sechs Fragen** — Volumen, aktueller Prozess, Zeitaufwand,
+   Herausforderung, Wachstum, Rolle im Unternehmen.
+7. **Ergebnis** — dynamische Einschaetzung mit Ampel aus `assessment.ts`,
+   plus optionalem Paketkosten-Rechner. Beides **ohne Kontaktdaten**.
+8. **Kontakt** — Vorname, Firma, E-Mail (Pflicht), Telefon und Shoplink
+   (optional). Gefragt wird fuer den Anbieter-Abgleich, nicht fuer das
+   Ergebnis.
+9. **Bestaetigung** — was als Naechstes passiert.
+
+### Warum diese Reihenfolge (Pixel-Daten, 14 Tage)
+
+Der frühere Aufbau war Hero mit CTA → Gate → 6 Fragen → Kontakt →
+Ergebnis. Drei Messwerte haben ihn gekippt:
+
+- Von den Landingpage-Aufrufen klickte nur rund **ein Drittel** den CTA.
+  Groesster Einzelverlust im Funnel. Deshalb steht das Quiz jetzt oben und
+  der Schritt entfaellt.
+- Am Rollen-**Gate** gingen **25 %** derer verloren, die den CTA schon
+  geklickt hatten: Die erste Interaktion war ein Filter, kein Nutzen. Die
+  Rolle ist jetzt die letzte Frage.
+- **41 Leute** beantworteten alle sechs Fragen, **11** schickten das
+  Formular ab — und in diesen 11 stecken noch eigene Testlaeufe. Das
+  Ergebnis lag hinter der Kontaktabfrage. Jetzt davor.
+
+Die Telefonnummer ist aus demselben Grund optional geworden: vier
+Pflichtfelder am Ende waren eines zu viel.
+
+Weggefallen ist die Frage *"Was waere dir am wichtigsten?"*. Sie floss
+weder in `scoreLead()` noch in `buildAssessment()` ein. So bleibt es bei
+den sechs Fragen, die die Anzeigen versprechen, obwohl die Rolle jetzt
+mitzaehlt.
 
 Drei Dinge, die bewusst so sind:
 

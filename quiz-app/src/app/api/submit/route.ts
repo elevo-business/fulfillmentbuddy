@@ -4,6 +4,13 @@ import { submitLeadToHubspot, isHubspotConfigured, HubspotInvalidEmailError } fr
 import type { LeadAttribution } from '@/lib/hubspot';
 import type { QuizAnswers } from '@/lib/scoring';
 
+// 'priority' und 'phone' stehen bewusst NICHT mehr hier.
+//   - Die Frage nach dem wichtigsten Kriterium floss weder in den Score
+//     noch in die Einschaetzung ein; sie kostete nur einen Schritt.
+//   - Die Telefonnummer ist im Formular optional geworden. Vier
+//     Pflichtfelder waren eines zu viel; die Nummer ist das Feld, an dem
+//     abgebrochen wird.
+// Beide bleiben im Typ und werden weiter gespeichert, wenn sie ankommen.
 const REQUIRED_FIELDS: (keyof QuizAnswers)[] = [
   'role',
   'volume',
@@ -11,11 +18,9 @@ const REQUIRED_FIELDS: (keyof QuizAnswers)[] = [
   'timeSpent',
   'challenge',
   'growth',
-  'priority',
   'name',
   'company',
   'email',
-  'phone',
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
