@@ -126,6 +126,22 @@ selbst, ohne Code-Aenderung:
 Fuer den Paketkosten-Rechner zusaetzlich (Typ: Zahl): `fb_parcels_per_month`,
 `fb_cost_per_parcel`, `fb_labor_share_pct`, `fb_fte_equivalent`.
 
+**Per Skript statt per Hand:**
+
+```bash
+# nur pruefen, was fehlt (Scope crm.schemas.contacts.read)
+HUBSPOT_PRIVATE_APP_TOKEN=pat-... node scripts/hubspot-properties.mjs --check
+
+# fehlende anlegen (Scope crm.schemas.contacts.write)
+HUBSPOT_PRIVATE_APP_TOKEN=pat-... node scripts/hubspot-properties.mjs --create
+```
+
+Legt eine eigene Property-Gruppe "Fulfillmentbuddy Check" an, damit die
+Felder im Kontakt nicht zwischen den Standardfeldern untergehen. Bereits
+vorhandene Properties werden nicht angefasst, mehrfaches Ausfuehren ist
+gefahrlos. `--check` meldet ausserdem, ob das Standardfeld `message`
+existiert — dort liegt der Volltext, solange die fb_*-Felder fehlen.
+
 ### Herkunft / Attribution
 `src/lib/attribution.ts` sichert die UTM-Parameter beim ersten Seitenaufruf
 in `sessionStorage` und schickt sie beim Absenden mit. Ohne das endet die
