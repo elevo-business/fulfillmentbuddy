@@ -232,7 +232,21 @@ export default function Quiz() {
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...answers, attribution: readAttribution() }),
+        body: JSON.stringify({
+          ...answers,
+          attribution: readAttribution(),
+          // Wer den Rechner vor dem Absenden genutzt hat, schickt die Werte
+          // gleich mit — dann liegen sie in allen Senken (CRM wie Lead
+          // Routing Portal) beim Anlegen des Leads, nicht erst als Nachtrag.
+          ...(cost && costParcels !== null
+            ? {
+                parcelsPerMonth: costParcels,
+                costPerParcel: cost.costPerParcel,
+                laborSharePct: Math.round(cost.laborShare * 1000) / 10,
+                fteEquivalent: cost.fteEquivalent,
+              }
+            : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Unbekannter Fehler');
