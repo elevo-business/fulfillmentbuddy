@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Legt die fb_*-Kontakt-Properties in HubSpot an — oder zeigt erst, welche
- * fehlen.
+ * Legt die Kontakt-Properties fuer die Lead-Erfassung in HubSpot an (fb_* aus
+ * dem Quiz, lead_* als gemeinsamer Feldsatz ueber beide Quellen) — oder zeigt
+ * erst, welche fehlen.
  *
  * Warum es das gibt: `src/lib/hubspot.ts` sendet ausschliesslich Felder,
  * die im Portal existieren. Das schuetzt den Lead (HubSpot lehnt
@@ -55,6 +56,24 @@ const PROPS = [
   ['fb_cost_per_parcel', 'Kosten pro Paket (Rechner)', 'number', 'Errechnete Abwicklungskosten je Paket, in Euro.'],
   ['fb_labor_share_pct', 'Personalanteil in % (Rechner)', 'number', 'Anteil Personal an den Abwicklungskosten.'],
   ['fb_fte_equivalent', 'Vollzeitstellen (Rechner)', 'number', 'Wie viele Vollzeitstellen der Versand bindet.'],
+
+  // Gemeinsamer Feldsatz ueber beide Lead-Quellen. Die Meta-Lead-Ads
+  // schreiben ueber den HubSpot-Connector in eigene, anders benannte
+  // Properties; eine Tabellenansicht ueber ALLE Leads braucht Spalten, die
+  // beide Seiten fuellen. Quiz-Leads fuellen sie ueber src/lib/hubspot.ts,
+  // Meta-Leads werden nachgezogen (Skript oder von Hand).
+  // Bewusst Text statt Auswahlliste: ein Wert ausserhalb der Optionen wuerde
+  // von HubSpot mit 400 quittiert, Filter in Listen funktionieren mit Text
+  // genauso.
+  ['lead_quelle', 'Lead-Quelle', 'text', 'Website-Quiz oder Meta Lead-Formular.'],
+  ['lead_bestellungen', 'Bestellungen pro Monat (Angabe)', 'text', 'Originalwortlaut der gewählten Spanne — die Stufen der beiden Formulare unterscheiden sich.'],
+  ['lead_bestellungen_min', 'Bestellungen pro Monat (untere Grenze)', 'number', 'Untere Grenze der Spanne, zum Sortieren und Filtern.'],
+  ['lead_produkte', 'Produkte', 'text', 'Hauptsächlich versendete Produkte. Nur aus dem Meta-Formular.'],
+  ['lead_zeitfenster', 'Zeitfenster', 'text', 'Wann eine Lösung umgesetzt werden soll. Nur aus dem Meta-Formular.'],
+  ['lead_rolle', 'Rolle', 'text', 'Rolle im Unternehmen. Nur aus dem Quiz.'],
+  ['lead_herausforderung', 'Größte Herausforderung', 'text', 'Nur aus dem Quiz.'],
+  ['lead_score', 'Lead-Score (quellenübergreifend)', 'number', 'Score 0–100. Beim Quiz berechnet, bei Meta-Leads nachgetragen.'],
+  ['lead_shoplink', 'Shoplink', 'text', 'URL des Shops, sofern angegeben.'],
 ];
 
 async function api(path, init = {}) {

@@ -172,6 +172,32 @@ const ALWAYS_PRESENT_PROPERTIES = new Set([
   'message',
 ]);
 
+// --- Gemeinsamer Feldsatz fuer die Lead-Uebersicht ------------------------
+//
+// Die Leads kommen aus zwei Quellen, die in voellig getrennte Properties
+// schreiben: das Quiz hier ueber die CRM-API, die Meta-Lead-Ads ueber den
+// HubSpot-Connector in seine eigenen, anders benannten Felder
+// (`wie_viele_bestellungen_...`). Eine Tabellenansicht ueber alle Leads
+// braucht daher Spalten, die BEIDE Quellen fuellen — das sind die
+// `lead_*`-Properties. Die quellenspezifischen Felder (`fb_*` hier, die
+// Lead-Ad-Felder dort) bleiben daneben bestehen, sie tragen die Details.
+//
+// Die Bestellmengen-Stufen der beiden Formulare passen nicht aufeinander
+// (Meta: "unter 250" ... "2000+", Quiz: siehe VOLUME_OPTIONS). Sie werden
+// deshalb NICHT auf eine gemeinsame Skala gemappt — das waere erfundene
+// Genauigkeit. Stattdessen wandert die Originalangabe als Text nach
+// `lead_bestellungen`, und `lead_bestellungen_min` traegt die untere Grenze
+// als Zahl, damit sich die Liste sortieren und filtern laesst.
+
+/** Untere Grenze der Bestellmengen-Spanne aus VOLUME_OPTIONS. */
+const VOLUME_LOWER_BOUND: Record<string, number> = {
+  '0–100': 0,
+  '100–500': 100,
+  '500–1.000': 500,
+  '1.000–5.000': 1000,
+  '5.000+': 5000,
+};
+
 // --- Lead-Zusammenfassung --------------------------------------------------
 
 function formatLeadSummary(
@@ -295,6 +321,18 @@ export async function submitLeadToHubspot(
   set('fb_utm_term', attribution.utmTerm);
   set('fb_landing_url', attribution.landingUrl);
   set('fb_referrer', attribution.referrer);
+
+  // Gemeinsamer Feldsatz — siehe Kommentar bei VOLUME_LOWER_BOUND. Fehlen die
+  // Properties im Portal noch, ueberspringt set() sie folgenlos.
+  set('lead_quelle', 'Website-Quiz');
+  set('lead_bestellungen', answers.volume);
+  set('lead_bestellungen_min', VOLUME_LOWER_BOUND[answers.volume]);
+  set('lead_rolle', answers.role);
+  set('lead_herausforderung', answers.challenge);
+  set('lead_score', score);
+  set('lead_shoplink', answers.shopUrl);
+  // `lead_produkte` und `lead_zeitfenster` fragt das Quiz nicht ab — die
+  // Spalten bleiben bei Website-Leads leer und tragen nur die Meta-Antworten.
 
   // Upsert über die E-Mail: ein Interessent, der das Quiz ein zweites Mal
   // ausfüllt, soll denselben Kontakt aktualisieren statt eine Dublette zu
