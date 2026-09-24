@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { submitLeadToMonday } from '@/lib/monday';
 import { submitLeadToHubspot, isHubspotConfigured, HubspotInvalidEmailError } from '@/lib/hubspot';
 import type { LeadAttribution } from '@/lib/hubspot';
+import { forwardLeadToPortal, isLeadPortalConfigured } from '@/lib/leadportal';
 import type { QuizAnswers } from '@/lib/scoring';
 
 // 'priority' und 'phone' stehen bewusst NICHT mehr hier.
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest) {
         suspectedBot,
         attribution,
       });
+      await forwardToLeadPortal(body as QuizAnswers, suspectedBot, attribution);
       return NextResponse.json({ ok: true, score, itemId: contactId, crm: 'hubspot' });
     } catch (err) {
       // Abgelehnte E-Mail ist kein Ausfall, sondern ein Tippfehler. Nicht in
@@ -139,6 +141,7 @@ export async function POST(req: NextRequest) {
     try {
       const { score, itemId } = await submitLeadToMonday(body as QuizAnswers, { suspectedBot });
       console.warn('Lead ueber monday-Fallback angelegt — HubSpot-Pfad pruefen', { itemId });
+      await forwardToLeadPortal(body as QuizAnswers, suspectedBot, attribution);
       return NextResponse.json({ ok: true, score, itemId, crm: 'monday' });
     } catch (err) {
       failures.push(`monday: ${err instanceof Error ? err.message : String(err)}`);
@@ -157,6 +160,25 @@ export async function POST(req: NextRequest) {
     { error: 'Übermittlung fehlgeschlagen. Bitte später erneut versuchen.' },
     { status: 502 }
   );
+}
+
+/**
+ * Zweitsenke Lead Routing Portal. Laeuft NACH erfolgreichem CRM-Save und
+ * darf den Lead niemals kosten: Fehler werden nur geloggt, die Antwort an
+ * den Nutzer bleibt vom CRM-Erfolg bestimmt. Ohne LEADPORTAL_API_KEY ist
+ * die Weiterleitung schlicht deaktiviert.
+ */
+async function forwardToLeadPortal(
+  body: QuizAnswers,
+  suspectedBot: boolean,
+  attribution: LeadAttribution
+): Promise<void> {
+  if (!isLeadPortalConfigured()) return;
+  try {
+    await forwardLeadToPortal(body, { suspectedBot, attribution });
+  } catch (err) {
+    console.error('Weiterleitung ans Lead Routing Portal fehlgeschlagen (Lead liegt im CRM)', err);
+  }
 }
 
 /**
