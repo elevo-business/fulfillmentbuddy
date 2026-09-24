@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { buildAssessment } from '@/lib/assessment';
-import { captureAttribution, readAttribution } from '@/lib/attribution';
+import { captureAttribution, resolveAttribution } from '@/lib/attribution';
+import type { LeadAttribution } from '@/lib/attribution';
 import { track } from '@/lib/tracking';
 import {
   ROLE_OPTIONS,
@@ -147,8 +148,14 @@ export default function Quiz() {
 
   // Herkunft sofort beim Aufruf sichern, nicht erst beim Absenden: bis der
   // Nutzer das Quiz durch hat, kann die URL laengst ohne Parameter dastehen.
+  //
+  // Der Wert wird zusaetzlich hier im Arbeitsspeicher gehalten. Verlass auf
+  // sessionStorage allein kostet die Zuordnung in jedem Browser, der ihn
+  // verweigert — in den In-App-Browsern von Instagram und Facebook also
+  // ausgerechnet bei einem grossen Teil des bezahlten Traffics.
+  const attributionRef = useRef<LeadAttribution>({});
   useEffect(() => {
-    captureAttribution();
+    attributionRef.current = captureAttribution();
   }, []);
 
   // Optionaler Paketkosten-Rechner: nach dem Ergebnis, nicht davor. Er ist
@@ -232,7 +239,7 @@ export default function Quiz() {
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...answers, attribution: readAttribution() }),
+        body: JSON.stringify({ ...answers, attribution: resolveAttribution(attributionRef.current) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Unbekannter Fehler');

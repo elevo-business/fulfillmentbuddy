@@ -5,9 +5,23 @@
 // Klick, das CRM beginnt beim Formular. Die UTM-Parameter schliessen die
 // Luecke.
 //
-// Gespeichert wird in sessionStorage, nicht in einem Cookie: der Wert wird
-// rein technisch fuer die Zuordnung der eigenen Anfrage gebraucht, verlaesst
-// die Session nicht und ueberlebt trotzdem einen Reload waehrend des Quiz.
+// Die Herkunft wird an ZWEI Stellen gehalten:
+//
+//   1) Im Arbeitsspeicher der Quiz-Komponente, gelesen beim ersten Rendern.
+//      Das ist die verlaessliche Quelle: das Quiz laeuft seit dem Funnel-Umbau
+//      komplett auf einer Seite ab, der Wert muss also keinen Seitenwechsel
+//      ueberleben.
+//   2) Zusaetzlich in sessionStorage, damit ein Reload mitten im Quiz die
+//      Zuordnung nicht kostet.
+//
+// Frueher hing die Zuordnung allein an (2) — und ging damit jedes Mal
+// verloren, wenn der Browser den Speicher verweigert. Genau das passiert in
+// den In-App-Browsern von Instagram und Facebook mit aktivem Tracking-Schutz,
+// also ausgerechnet bei der Haelfte des bezahlten Traffics. Lead 875114371291
+// (23.09.2026) kam so ohne jede Herkunft an, nicht einmal mit Einstiegsseite.
+//
+// Kein Cookie: der Wert wird rein technisch fuer die Zuordnung der eigenen
+// Anfrage gebraucht und verlaesst die Session nicht.
 
 const STORAGE_KEY = 'fb_attribution';
 
@@ -31,41 +45,49 @@ function hasAnyValue(a: LeadAttribution): boolean {
   return Object.values(a).some(Boolean);
 }
 
+/** Traegt die Anzeige, ueber die der Lead kam — der Teil, der zaehlt. */
+function hasUtm(a: LeadAttribution): boolean {
+  return Boolean(a.utmSource || a.utmMedium || a.utmCampaign || a.utmContent);
+}
+
+/** Die aktuelle Seite auslesen. Ohne Speicher, ohne Seiteneffekt. */
+function fromWindow(): LeadAttribution {
+  if (typeof window === 'undefined') return {};
+  const params = new URLSearchParams(window.location.search);
+  return {
+    utmSource: clean(params.get('utm_source')),
+    utmMedium: clean(params.get('utm_medium')),
+    utmCampaign: clean(params.get('utm_campaign')),
+    utmContent: clean(params.get('utm_content')),
+    utmTerm: clean(params.get('utm_term')),
+    landingUrl: clean(window.location.href),
+    referrer: clean(document.referrer),
+  };
+}
+
 /**
- * Beim ersten Seitenaufruf die Parameter sichern. Ein spaeterer Aufruf ohne
- * UTMs (z.B. nach einem Reload auf die nackte URL) darf einen bereits
- * gespeicherten Wert nicht ueberschreiben — sonst geht die Zuordnung genau
- * dann verloren, wenn der Nutzer besonders lange ueberlegt hat.
+ * Beim ersten Seitenaufruf die Parameter sichern — und zurueckgeben, damit
+ * der Aufrufer sie im Arbeitsspeicher behalten kann.
+ *
+ * Ein spaeterer Aufruf ohne UTMs (z.B. nach einem Reload auf die nackte URL)
+ * darf einen bereits gespeicherten Wert nicht ueberschreiben — sonst geht die
+ * Zuordnung genau dann verloren, wenn der Nutzer besonders lange ueberlegt hat.
  */
-export function captureAttribution(): void {
-  if (typeof window === 'undefined') return;
+export function captureAttribution(): LeadAttribution {
+  const fresh = fromWindow();
+  if (!hasAnyValue(fresh)) return fresh;
+
   try {
-    const params = new URLSearchParams(window.location.search);
-    const fresh: LeadAttribution = {
-      utmSource: clean(params.get('utm_source')),
-      utmMedium: clean(params.get('utm_medium')),
-      utmCampaign: clean(params.get('utm_campaign')),
-      utmContent: clean(params.get('utm_content')),
-      utmTerm: clean(params.get('utm_term')),
-      landingUrl: clean(window.location.href),
-      referrer: clean(document.referrer),
-    };
-
     const stored = readAttribution();
-    const storedHasUtm = Boolean(
-      stored.utmSource || stored.utmMedium || stored.utmCampaign || stored.utmContent
-    );
-    const freshHasUtm = Boolean(
-      fresh.utmSource || fresh.utmMedium || fresh.utmCampaign || fresh.utmContent
-    );
-    if (storedHasUtm && !freshHasUtm) return;
-    if (!hasAnyValue(fresh)) return;
-
+    if (hasUtm(stored) && !hasUtm(fresh)) return stored;
     window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
   } catch {
-    // sessionStorage kann blockiert sein (Private Mode, strenge Einstellungen).
-    // Attribution ist Beiwerk — ein Lead darf daran nie scheitern.
+    // sessionStorage kann blockiert sein (Private Mode, In-App-Browser,
+    // strenge Einstellungen). Der Rueckgabewert steht davon unabhaengig —
+    // genau dafuer gibt es ihn.
   }
+
+  return fresh;
 }
 
 export function readAttribution(): LeadAttribution {
@@ -78,4 +100,20 @@ export function readAttribution(): LeadAttribution {
   } catch {
     return {};
   }
+}
+
+/**
+ * Was beim Absenden mitgeschickt wird.
+ *
+ * `captured` ist der Wert aus dem Arbeitsspeicher der Komponente. Der
+ * gespeicherte Wert bekommt Vorrang, solange er eine Anzeige benennt: er kann
+ * aus einem frueheren Aufruf derselben Session stammen, bei dem die URL die
+ * UTMs noch trug. Verweigert der Browser den Speicher, bleibt `captured` —
+ * und damit mindestens Einstiegsseite und Referrer.
+ */
+export function resolveAttribution(captured: LeadAttribution): LeadAttribution {
+  const stored = readAttribution();
+  if (hasUtm(stored)) return stored;
+  if (hasUtm(captured)) return captured;
+  return hasAnyValue(captured) ? captured : stored;
 }

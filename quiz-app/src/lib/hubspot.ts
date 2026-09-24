@@ -249,6 +249,114 @@ function formatLeadSummary(
   ].join('\n');
 }
 
+/** HTML-Sonderzeichen entschaerfen — Firmennamen enthalten & und < durchaus. */
+function esc(value: string | undefined | null): string {
+  if (value === undefined || value === null || value === '') return '\u2014';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Derselbe Inhalt wie formatLeadSummary, aber als HTML fuer eine Notiz im
+ * HubSpot-Aktivitaetsverlauf.
+ *
+ * Warum beides: die Einzelfelder tragen die Uebersichtsansicht (filtern,
+ * sortieren, spaeter in das Kundenportal exportieren) — filtern laesst sich
+ * eine Notiz naemlich nicht. Die Notiz ist das, was man liest, wenn man einen
+ * Lead in die Hand nimmt oder ihn an einen Kunden weitergibt.
+ */
+function formatLeadNoteHtml(
+  answers: QuizAnswers,
+  score: number,
+  suspectedBot: boolean,
+  attribution: LeadAttribution
+): string {
+  const blockers = leadBlockers(answers);
+  const herkunft = [
+    attribution.utmSource && `Quelle: ${esc(attribution.utmSource)}`,
+    attribution.utmMedium && `Medium: ${esc(attribution.utmMedium)}`,
+    attribution.utmCampaign && `Kampagne: ${esc(attribution.utmCampaign)}`,
+    attribution.utmContent && `Anzeige: ${esc(attribution.utmContent)}`,
+    attribution.utmTerm && `Ad Set: ${esc(attribution.utmTerm)}`,
+    attribution.referrer && `Referrer: ${esc(attribution.referrer)}`,
+    attribution.landingUrl && `Einstiegsseite: ${esc(attribution.landingUrl)}`,
+  ].filter(Boolean) as string[];
+
+  return [
+    `<b>Neuer Quiz-Lead von fulfillmentbuddy.de</b>`,
+    ...(suspectedBot
+      ? [
+          ``,
+          `<b>Spam-Verdacht:</b> Das Honeypot-Feld war ausgefuellt. Kann ein Bot`,
+          `sein oder ein echter Interessent, dessen Browser das unsichtbare Feld`,
+          `automatisch befuellt hat. Vor dem Verwerfen kurz pruefen.`,
+        ]
+      : []),
+    ``,
+    `<b>Kontakt</b>`,
+    `Firma: ${esc(answers.company)}`,
+    `Ansprechpartner: ${esc(answers.name)}`,
+    `E-Mail: ${esc(answers.email)}`,
+    `Telefon: ${esc(answers.phone)}`,
+    `Shoplink: ${esc(answers.shopUrl)}`,
+    ``,
+    `<b>Antworten aus dem Check</b>`,
+    `Rolle: ${esc(answers.role)}`,
+    `Bestellungen/Monat: ${esc(answers.volume)}`,
+    `Fulfillment aktuell: ${esc(answers.process)}`,
+    `Zeitaufwand/Woche: ${esc(answers.timeSpent)}`,
+    `Groesste Herausforderung: ${esc(answers.challenge)}`,
+    `Wachstum (12 Monate): ${esc(answers.growth)}`,
+    `Intent: ${esc(intentTier(answers))}`,
+    ``,
+    `<b>Bewertung</b>`,
+    `Lead-Score: ${score}/100 &mdash; ${esc(statusForLead(answers, score))}`,
+    blockers.length
+      ? `Ausschlussgruende: ${esc(blockers.join(', '))}`
+      : `Ausschlussgruende: keine`,
+    ``,
+    `<b>Herkunft</b>`,
+    ...(herkunft.length
+      ? herkunft
+      : [`Keine Zuordnung erfasst (Browser hat den Speicher verweigert).`]),
+  ].join('<br>');
+}
+
+/**
+ * Notiz am Kontakt anlegen. Schlaegt das fehl, ist der Lead trotzdem
+ * gespeichert — deshalb faengt diese Funktion alles ab und wirft nie. Die
+ * Antworten stehen ohnehin bereits in den Properties und in `message`; die
+ * Notiz ist die lesbare Zweitausfertigung, kein Datentraeger.
+ */
+async function createLeadNote(contactId: string, bodyHtml: string): Promise<void> {
+  try {
+    await hubspotRequest('/crm/v3/objects/notes', {
+      method: 'POST',
+      body: {
+        properties: {
+          hs_timestamp: new Date().toISOString(),
+          hs_note_body: bodyHtml,
+        },
+        // 202 = HubSpot-eigener Typ Notiz -> Kontakt.
+        associations: [
+          {
+            to: { id: contactId },
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }],
+          },
+        ],
+      },
+    });
+  } catch (err) {
+    console.warn(
+      `HubSpot-Notiz zu Kontakt ${contactId} konnte nicht angelegt werden. ` +
+        'Der Lead selbst ist gespeichert, die Antworten stehen in den Properties.',
+      err
+    );
+  }
+}
+
 function splitName(full: string): { firstname: string; lastname: string } {
   const parts = full.trim().split(/\s+/);
   if (parts.length === 1) return { firstname: parts[0], lastname: '' };
@@ -355,6 +463,13 @@ export async function submitLeadToHubspot(
   if (!contactId) {
     throw new Error('HubSpot-Upsert lieferte keine Kontakt-ID zurück.');
   }
+
+  // Erst jetzt, mit der Kontakt-ID in der Hand. Fehler hier kosten den Lead
+  // nicht — createLeadNote wirft nicht.
+  await createLeadNote(
+    contactId,
+    formatLeadNoteHtml(answers, score, suspectedBot, attribution)
+  );
 
   return { contactId, score };
 }
